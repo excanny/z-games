@@ -33,8 +33,9 @@ class GameRepository {
   async getLeaderboardForGame(gameId) {
     const game = await Game.findById(gameId).lean();
     if (!game) throw new Error("Game not found");
-
+  
     const sortedParticipants = (game.participants || [])
+      .filter(p => p.isActive) // ✅ Only include active participants
       .sort((a, b) => b.score - a.score)
       .map((p, index) => ({
         rank: index + 1,
@@ -43,10 +44,10 @@ class GameRepository {
         avatar: p.avatar,
         color: p.color,
       }));
-
-    // Get the player with longest streak
+  
+    // Get the player with the longest streak (among all, or only active? Decide based on your logic)
     const longestStreakInfo = this.getPlayerWithLongestStreakFromGame(game);
-
+  
     return {
       gameId: game._id,
       name: game.name,
@@ -54,7 +55,7 @@ class GameRepository {
       longestStreak: longestStreakInfo,
     };
   }
-
+  
   async getPlayerWithLongestStreak(gameId) {
     const game = await Game.findById(gameId).lean();
     if (!game) throw new Error("Game not found");

@@ -14,6 +14,7 @@ const GameSchema = new mongoose.Schema({
       name: String,
       avatar: String,
       color: String,
+      isActive: { type: Boolean, default: true },
       score: {
         type: Number,
         default: 0

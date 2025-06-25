@@ -1,18 +1,42 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
+const http = require("http");          // <-- Required for Socket.IO
+const socketIO = require("socket.io"); // <-- Socket.IO import
 const connectDB = require("./src/config/db");
 const { swaggerUi, swaggerSpec } = require("./swagger");
 
 // Import routes
 const authRoutes = require("./src/infrastructure/routes/authRoutes");
-const paymentRoutes = require("./src/infrastructure/routes/paymentRoutes"); // optional
-const gameRoutes = require("./src/infrastructure/routes/gameRoutes"); // assuming you have or will create this
+const gameRoutes = require("./src/infrastructure/routes/gameRoutes");
 
-// Initialize app
+// Initialize Express app
 const app = express();
 
-// Connect to database
+// Create HTTP server (needed for Socket.IO)
+const server = http.createServer(app);
+
+// Initialize Socket.IO
+const io = socketIO(server, {
+  cors: {
+    origin: "http://localhost:5174",
+    methods: ["GET", "POST", "PATCH"],
+  },
+});
+
+// Make io accessible in routes / controllers
+app.set("io", io);
+
+// Example socket.io event
+io.on("connection", (socket) => {
+  console.log("New client connected");
+
+  socket.on("disconnect", () => {
+    console.log("Client disconnected");
+  });
+});
+
+// Connect to MongoDB
 connectDB();
 
 // Middleware
@@ -21,10 +45,10 @@ app.use(express.json());
 
 // Routes
 app.use("/api/auth", authRoutes);
-app.use("/api/games", gameRoutes); // add this if you have game endpoints
-// app.use("/api/payments", paymentRoutes); // uncomment when needed
+app.use("/api/games", gameRoutes);
+// app.use("/api/payments", paymentRoutes); // Uncomment if needed
 
-// Swagger documentation route
+// Swagger docs
 app.use("/swagger", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 // Root route
@@ -32,8 +56,8 @@ app.get("/", (req, res) => {
   res.send("🎮 Welcome to the Z Games API!");
 });
 
-// Start server
+// Start the server
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });

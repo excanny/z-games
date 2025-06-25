@@ -39,6 +39,33 @@ class GameController {
         });
       }
     }
+
+    async getGameByGameCode(req, res) {
+      try {
+        const { gameCode } = req.params;
+        const game = await this.gameUseCase.getGameByGameCode(gameCode);
+
+        if (!game) {
+          return res.status(404).json({
+            status: "error",
+            message: "Game not found",
+            data: null,
+          });
+        }
+
+        return res.status(200).json({
+          status: "success",
+          message: "Game retrieved successfully",
+          data: game,
+        });
+      } catch (error) {
+        return res.status(500).json({
+          status: "error",
+          message: "An unexpected error occurred",
+          data: error.message || error,
+        });
+      }
+    }
   
     async getAllGames(req, res) {
       try {
@@ -100,7 +127,8 @@ class GameController {
       try {
         const { gameId } = req.params;
         const { name, scoreDelta } = req.body; // Use scoreDelta to indicate change amount
-  
+        const io = req.app.get('io');  // Access io globally
+
         if (typeof scoreDelta !== "number") {
           throw new Error("scoreDelta must be a number");
         }
@@ -108,7 +136,8 @@ class GameController {
         const updatedParticipant = await this.gameUseCase.updateParticipantScore(
           gameId,
           name,
-          scoreDelta
+          scoreDelta,
+          io
         );
   
         return res.status(200).json({

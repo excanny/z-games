@@ -19,13 +19,17 @@ class GameUseCase {
     async getGameById(id) {
       return await this.gameRepository.getGameById(id);
     }
+
+    async getGameByGameCode(gameCode) {
+      return await this.gameRepository.getGameByGameCode(gameCode);
+    }
   
     async getAllGames() {
       return await this.gameRepository.getAllGames();
     }
   
-    async updateGame(id, gameData) {
-      return await this.gameRepository.updateGame(id, gameData);
+    async updateGame(id, gameData, io) {
+      return await this.gameRepository.updateGame(id, gameData, io);
     }
   
     async getActiveGame() {
@@ -39,9 +43,9 @@ class GameUseCase {
      * @param {String} participantName
      * @param {Number} scoreDelta (can be positive or negative)
      */
-    async updateParticipantScore(gameId, participantName, scoreDelta) {
+    async updateParticipantScore(gameId, participantName, scoreDelta, io) {
       // Delegate to repository which updates score and logs event
-      return await this.gameRepository.updatePlayerScore(gameId, participantName, scoreDelta);
+      return await this.gameRepository.updatePlayerScore(gameId, participantName, scoreDelta, io);
     }
   
     async getLeaderboardForGame(gameId) {

@@ -135,6 +135,32 @@ router.get("/active", gameController.getActiveGame.bind(gameController));
 
 /**
  * @swagger
+ * /games/code/{gameCode}:
+ *   get:
+ *     summary: Get a game by game code
+ *     tags: [Games]
+ *     parameters:
+ *       - in: path
+ *         name: gameCode
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The game code of the game
+ *         example: "summer-tournament-2025"
+ *     responses:
+ *       200:
+ *         description: Game found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Game'
+ *       404:
+ *         description: Game not found
+ */
+router.get("/code/:gameCode", gameController.getGameByGameCode.bind(gameController));
+
+/**
+ * @swagger
  * /games/{id}/leaderboard:
  *   get:
  *     summary: Get leaderboard for a specific game

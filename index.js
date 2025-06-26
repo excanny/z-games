@@ -19,7 +19,8 @@ const server = http.createServer(app);
 // Initialize Socket.IO
 const io = socketIO(server, {
   cors: {
-    origin: "http://localhost:5174",
+    //origin: "http://localhost:5174",
+    origin: "https://z-games.onrender.com",
     methods: ["GET", "POST", "PATCH"],
   },
 });

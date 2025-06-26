@@ -27,9 +27,8 @@ const GameSchema = new mongoose.Schema({
       updatedAt: { type: Date, default: Date.now },
       scoreChange: Number // Positive for score increase, negative for decrease
     }
-  ],
-  createdAt: { type: Date, default: Date.now }
-});
+  ]
+}, { timestamps: true });  
 
 // Index for faster gameCode lookups
 GameSchema.index({ gameCode: 1 });
@@ -52,7 +51,7 @@ GameSchema.statics.generateGameCode = function() {
   
   const randomAdjective = adjectives[Math.floor(Math.random() * adjectives.length)];
   const randomNoun = nouns[Math.floor(Math.random() * nouns.length)];
-  const randomNumber = Math.floor(Math.random() * 1000); // Increased to 0-999 for more combinations
+  const randomNumber = Math.floor(Math.random() * 1000);
   
   return `${randomAdjective}${randomNoun}${randomNumber}`;
 };

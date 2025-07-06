@@ -1,7 +1,7 @@
-const express = require("express");
-const AuthController = require("../../adapters/controllers/authController");
-const AuthUseCase = require("../../use-cases/authUseCase");
-const UserRepository = require("../repositories/userRepository");
+import express from 'express';
+import AuthController from '../../adapters/controllers/authController.js';
+import AuthUseCase from '../../use-cases/authUseCase.js';
+import UserRepository from '../repositories/userRepository.js';
 
 const router = express.Router();
 const userRepository = new UserRepository();
@@ -46,7 +46,7 @@ const authController = new AuthController(authUseCase);
  *       400:
  *         description: Invalid request data
  */
-router.post("/register", authController.register.bind(authController));
+router.post('/register', authController.register.bind(authController));
 
 /**
  * @swagger
@@ -79,6 +79,6 @@ router.post("/register", authController.register.bind(authController));
  *       401:
  *         description: Invalid credentials
  */
-router.post("/login", authController.login.bind(authController));
+router.post('/login', authController.login.bind(authController));
 
-module.exports = router;
+export default router;

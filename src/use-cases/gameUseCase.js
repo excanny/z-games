@@ -3,320 +3,580 @@ class GameUseCase {
     this.gameRepository = gameRepository;
   }
 
-  async createGame({ name, gameType, participants }) {
-    // Validate participants array contains objects with name, avatar, color
-    if (!Array.isArray(participants) || participants.some(p => !p.name || !p.avatar || !p.color)) {
-      throw new Error("Invalid participants data");
+  /**
+   * Create a new game with comprehensive configuration
+   * @param {Object} gameData - Complete game configuration
+   * @returns {Object} Created game
+   */
+  async createGame(gameData) {
+    // Validate required fields
+    if (!gameData.name || !gameData.category || !gameData.description || !gameData.gameType) {
+      throw new Error("Name, category, description, and gameType are required");
     }
 
-    // Deactivate all games first
-    await this.gameRepository.deactivateAllGames();
+    // Validate enums
+    const validCategories = [
+      'word_game', 'physical_game', 'skill_game', 'party_game', 
+      'elimination_game', 'team_game', 'individual_game', 'social_deduction'
+    ];
+    const validGameTypes = ['competitive', 'cooperative', 'elimination', 'scoring', 'social'];
+    const validDifficulties = ['easy', 'medium', 'hard'];
 
-    // Create new game and set active
-    return await this.gameRepository.createGame({ name, gameType, participants, isActive: true });
+    if (!validCategories.includes(gameData.category)) {
+      throw new Error(`Invalid category. Must be one of: ${validCategories.join(', ')}`);
+    }
+
+    if (!validGameTypes.includes(gameData.gameType)) {
+      throw new Error(`Invalid gameType. Must be one of: ${validGameTypes.join(', ')}`);
+    }
+
+    if (gameData.difficulty && !validDifficulties.includes(gameData.difficulty)) {
+      throw new Error(`Invalid difficulty. Must be one of: ${validDifficulties.join(', ')}`);
+    }
+
+    // Set defaults
+    const gameWithDefaults = {
+      ...gameData,
+      isActive: true,
+      difficulty: gameData.difficulty || 'medium',
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+
+    return await this.gameRepository.createGame(gameWithDefaults);
   }
 
   async getGameById(id) {
+    if (!id) {
+      throw new Error("Game ID is required");
+    }
     return await this.gameRepository.getGameById(id);
   }
 
-  async getGameByGameCode(gameCode) {
-    return await this.gameRepository.getGameByGameCode(gameCode);
+  async getGameByName(name) {
+    if (!name) {
+      throw new Error("Game name is required");
+    }
+    return await this.gameRepository.getGameByName(name);
   }
 
   async getAllGames() {
     return await this.gameRepository.getAllGames();
   }
 
-  async updateGame(id, gameData, io) {
-    return await this.gameRepository.updateGame(id, gameData, io);
-  }
-
-  async getActiveGame() {
-    return await this.gameRepository.getActiveGame();
-  }
-
-  /**
-   * Add a new player to an active game
-   * @param {String} gameId 
-   * @param {Object} playerData - { name, avatar?, color? }
-   * @param {Object} io - Socket.io instance
-   * @returns {Object} The added participant
-   */
-  async addPlayerToGame(gameId, playerData, io) {
-    // Validate required player data
-    if (!playerData || !playerData.name) {
-      throw new Error("Player name is required");
-    }
-
-    // Validate player name length and characters
-    if (playerData.name.trim().length === 0) {
-      throw new Error("Player name cannot be empty");
-    }
-
-    if (playerData.name.length > 50) {
-      throw new Error("Player name must be 50 characters or less");
-    }
-
-    // Clean the player data
-    const cleanPlayerData = {
-      name: playerData.name.trim(),
-      avatar: playerData.avatar || null,
-      color: playerData.color || null
-    };
-
-    return await this.gameRepository.addPlayerToGame(gameId, cleanPlayerData, io);
-  }
-
-  /**
-   * Add multiple players to an active game in bulk
-   * @param {String} gameId 
-   * @param {Array} playersData - Array of player objects [{ name, avatar?, color? }, ...]
-   * @param {Object} io - Socket.io instance
-   * @returns {Object} Results object with added, reactivated, and failed players
-   */
-  async addBulkPlayersToGame(gameId, playersData, io) {
-    // Validate game ID
-    if (!gameId) {
+  async updateGame(id, gameData) {
+    if (!id) {
       throw new Error("Game ID is required");
     }
+    return await this.gameRepository.updateGame(id, gameData);
+  }
 
-    // Validate and clean players data using repository's validation method
-    const validation = this.gameRepository.validateBulkPlayerData(playersData);
-    
-    if (validation.hasErrors) {
-      // If there are validation errors, we can either throw or return them
-      // For better UX, let's include validation errors in the response
-      const validationErrors = validation.invalid.map(invalid => ({
-        playerData: invalid.playerData,
-        error: invalid.errors.join('; ')
-      }));
-      
-      // If no valid players, throw error
-      if (validation.valid.length === 0) {
-        throw new Error(`No valid players to add. Validation errors: ${JSON.stringify(validationErrors)}`);
-      }
+  async deactivateGame(id) {
+    if (!id) {
+      throw new Error("Game ID is required");
+    }
+    return await this.gameRepository.deactivateGame(id);
+  }
+
+  async getActiveGames() {
+    return await this.gameRepository.getActiveGames();
+  }
+
+  /**
+   * Search games with multiple filters
+   * @param {Object} filters - Search criteria
+   * @returns {Array} Matching games
+   */
+  async searchGames(filters = {}) {
+    const { 
+      searchTerm, 
+      category, 
+      difficulty, 
+      gameType, 
+      playerCount, 
+      maxDuration, 
+      minAge, 
+      maxAge, 
+      teamBased, 
+      tags,
+      equipmentAvailable 
+    } = filters;
+
+    let games = await this.getAllGames();
+
+    // Apply filters
+    if (searchTerm) {
+      const searchResults = await this.gameRepository.searchGames(searchTerm);
+      const searchIds = searchResults.map(g => g._id.toString());
+      games = games.filter(g => searchIds.includes(g._id.toString()));
     }
 
-    // Clean the valid player data
-    const cleanPlayersData = validation.valid.map(playerData => ({
-      name: playerData.name.trim(),
-      avatar: playerData.avatar || null,
-      color: playerData.color || null
-    }));
+    if (category) {
+      games = games.filter(g => g.category === category);
+    }
 
-    // Validate player name lengths
-    const nameValidationErrors = [];
-    cleanPlayersData.forEach((playerData, index) => {
-      if (playerData.name.length > 50) {
-        nameValidationErrors.push({
-          playerData,
-          error: "Player name must be 50 characters or less"
-        });
+    if (difficulty) {
+      games = games.filter(g => g.difficulty === difficulty);
+    }
+
+    if (gameType) {
+      games = games.filter(g => g.gameType === gameType);
+    }
+
+    if (playerCount) {
+      games = games.filter(g => {
+        const minPlayers = g.teamConfiguration?.minPlayers || 1;
+        const maxPlayers = g.teamConfiguration?.maxPlayers;
+        return playerCount >= minPlayers && (maxPlayers === null || playerCount <= maxPlayers);
+      });
+    }
+
+    if (maxDuration) {
+      games = games.filter(g => {
+        const duration = g.duration?.estimatedMinutes;
+        return !duration || duration <= maxDuration;
+      });
+    }
+
+    if (minAge !== undefined || maxAge !== undefined) {
+      games = games.filter(g => {
+        const gameMinAge = g.ageRating?.minAge;
+        const gameMaxAge = g.ageRating?.maxAge;
+        
+        if (minAge !== undefined && gameMinAge && minAge < gameMinAge) return false;
+        if (maxAge !== undefined && gameMaxAge && maxAge > gameMaxAge) return false;
+        
+        return true;
+      });
+    }
+
+    if (teamBased !== undefined) {
+      games = games.filter(g => g.teamConfiguration?.teamBased === teamBased);
+    }
+
+    if (tags && tags.length > 0) {
+      games = games.filter(g => 
+        g.tags && g.tags.some(tag => tags.includes(tag))
+      );
+    }
+
+    if (equipmentAvailable && equipmentAvailable.length > 0) {
+      games = games.filter(g => {
+        if (!g.equipment || g.equipment.length === 0) return true;
+        
+        return g.equipment.every(eq => 
+          eq.optional || equipmentAvailable.includes(eq.item)
+        );
+      });
+    }
+
+    return games;
+  }
+
+  /**
+   * Get game recommendations based on criteria
+   * @param {Object} criteria - Recommendation criteria
+   * @returns {Array} Recommended games
+   */
+  async getGameRecommendations(criteria = {}) {
+    const { playerCount, availableTime, preferredDifficulty, age, teamPreference } = criteria;
+
+    let recommendations = await this.getAllGames();
+
+    // Score each game based on criteria match
+    recommendations = recommendations.map(game => {
+      let score = 0;
+
+      // Player count match
+      if (playerCount) {
+        const minPlayers = game.teamConfiguration?.minPlayers || 1;
+        const maxPlayers = game.teamConfiguration?.maxPlayers;
+        if (playerCount >= minPlayers && (maxPlayers === null || playerCount <= maxPlayers)) {
+          score += 10;
+        }
       }
+
+      // Time match
+      if (availableTime && game.duration?.estimatedMinutes) {
+        if (game.duration.estimatedMinutes <= availableTime) {
+          score += 8;
+          // Bonus for games that use most of available time
+          const timeUtilization = game.duration.estimatedMinutes / availableTime;
+          if (timeUtilization > 0.7) score += 2;
+        }
+      }
+
+      // Difficulty preference
+      if (preferredDifficulty && game.difficulty === preferredDifficulty) {
+        score += 5;
+      }
+
+      // Age appropriateness
+      if (age) {
+        const gameMinAge = game.ageRating?.minAge;
+        const gameMaxAge = game.ageRating?.maxAge;
+        if ((!gameMinAge || age >= gameMinAge) && (!gameMaxAge || age <= gameMaxAge)) {
+          score += 3;
+        }
+      }
+
+      // Team preference
+      if (teamPreference !== undefined) {
+        const isTeamGame = game.teamConfiguration?.teamBased || false;
+        if (isTeamGame === teamPreference) {
+          score += 6;
+        }
+      }
+
+      return { ...game, recommendationScore: score };
     });
 
-    // Filter out players with name length issues
-    const validPlayers = cleanPlayersData.filter(playerData => playerData.name.length <= 50);
-    
-    if (validPlayers.length === 0) {
-      throw new Error("No valid players to add after name length validation");
-    }
-
-    // Add valid players in bulk
-    const results = await this.gameRepository.addBulkPlayersToGame(gameId, validPlayers, io);
-
-    // Include any validation errors in the response
-    if (validation.hasErrors || nameValidationErrors.length > 0) {
-      const allValidationErrors = [
-        ...validation.invalid.map(invalid => ({
-          playerData: invalid.playerData,
-          error: invalid.errors.join('; ')
-        })),
-        ...nameValidationErrors
-      ];
-      
-      results.failed = [...(results.failed || []), ...allValidationErrors];
-    }
-
-    return results;
+    // Filter out games with 0 score and sort by score
+    return recommendations
+      .filter(game => game.recommendationScore > 0)
+      .sort((a, b) => b.recommendationScore - a.recommendationScore)
+      .slice(0, 10); // Return top 10 recommendations
   }
 
   /**
-   * Remove a player from an active game (soft delete)
-   * @param {String} gameId 
-   * @param {String} participantName 
-   * @param {Object} io - Socket.io instance
-   * @returns {Object} The deactivated participant
+   * Get games by category
+   * @param {String} category - Game category
+   * @returns {Array} Games in category
    */
-  async removePlayerFromGame(gameId, participantName, io) {
-    if (!participantName || participantName.trim().length === 0) {
-      throw new Error("Participant name is required");
+  async getGamesByCategory(category) {
+    if (!category) {
+      throw new Error("Category is required");
     }
-
-    return await this.gameRepository.deactivatePlayer(gameId, participantName.trim(), io);
+    return await this.gameRepository.getGamesByCategory(category);
   }
 
   /**
-   * Reactivate a previously removed player
-   * @param {String} gameId 
-   * @param {String} participantName 
-   * @param {Object} io - Socket.io instance
-   * @returns {Object} The reactivated participant
+   * Get team-based games
+   * @returns {Array} Team games
    */
-  async reactivatePlayer(gameId, participantName, io) {
-    if (!participantName || participantName.trim().length === 0) {
-      throw new Error("Participant name is required");
-    }
-
-    return await this.gameRepository.reactivatePlayer(gameId, participantName.trim(), io);
+  async getTeamGames() {
+    return await this.gameRepository.getTeamGames();
   }
 
   /**
-   * Get all participants for a game (active and inactive)
-   * @param {String} gameId 
-   * @returns {Array} All participants with their status
+   * Get games by difficulty
+   * @param {String} difficulty - Game difficulty
+   * @returns {Array} Games with specified difficulty
    */
-  async getAllParticipants(gameId) {
+  async getGamesByDifficulty(difficulty) {
+    if (!difficulty) {
+      throw new Error("Difficulty is required");
+    }
+    return await this.gameRepository.getGamesByDifficulty(difficulty);
+  }
+
+  /**
+   * Get age-appropriate games
+   * @param {Number} age - Player age
+   * @returns {Array} Age-appropriate games
+   */
+  async getGamesByAge(age) {
+    if (!age || age < 0) {
+      throw new Error("Valid age is required");
+    }
+    return await this.gameRepository.getGamesByAge(age);
+  }
+
+  /**
+   * Get games suitable for player count
+   * @param {Number} playerCount - Number of players
+   * @returns {Array} Suitable games
+   */
+  async getGamesByPlayerCount(playerCount) {
+    if (!playerCount || playerCount < 1) {
+      throw new Error("Valid player count is required");
+    }
+    return await this.gameRepository.getGamesByPlayerCount(playerCount);
+  }
+
+  /**
+   * Get games by duration
+   * @param {Number} availableMinutes - Available time in minutes
+   * @returns {Array} Games that fit in time
+   */
+  async getGamesByDuration(availableMinutes) {
+    if (!availableMinutes || availableMinutes < 1) {
+      throw new Error("Valid duration is required");
+    }
+    return await this.gameRepository.getGamesByDuration(availableMinutes);
+  }
+
+  /**
+   * Get games by equipment availability
+   * @param {Array} availableEquipment - Available equipment
+   * @returns {Array} Playable games
+   */
+  async getGamesByEquipment(availableEquipment = []) {
+    return await this.gameRepository.getGamesByEquipment(availableEquipment);
+  }
+
+  /**
+   * Add animal superpower to a game
+   * @param {String} gameId - Game ID
+   * @param {Object} superpowerData - Superpower configuration
+   * @returns {Object} Updated game
+   */
+  async addAnimalSuperpower(gameId, superpowerData) {
     if (!gameId) {
       throw new Error("Game ID is required");
     }
 
-    return await this.gameRepository.getAllParticipants(gameId);
-  }
+    // Validate superpower data
+    const validAnimals = [
+      'Lion', 'Tiger', 'Eagle', 'Cat', 'Shark', 'Dog', 'Whale', 'Horse',
+      'Bison', 'Moose', 'Goose', 'Turtle', 'Beaver', 'Bear', 'Frog', 
+      'Rabbit', 'Wolf', 'Human', 'Monkey', 'Chameleon'
+    ];
 
-  /**
-   * Get only active participants for a game
-   * @param {String} gameId 
-   * @returns {Array} Active participants only
-   */
-  async getActiveParticipants(gameId) {
-    const allParticipants = await this.getAllParticipants(gameId);
-    return allParticipants.filter(p => p.isActive);
-  }
-
-  /**
-   * Get only inactive participants for a game
-   * @param {String} gameId 
-   * @returns {Array} Inactive participants only
-   */
-  async getInactiveParticipants(gameId) {
-    const allParticipants = await this.getAllParticipants(gameId);
-    return allParticipants.filter(p => !p.isActive);
-  }
-
-  /**
-   * Check if a player exists in a game (active or inactive)
-   * @param {String} gameId 
-   * @param {String} participantName 
-   * @returns {Object|null} Participant if found, null otherwise
-   */
-  async findParticipant(gameId, participantName) {
-    if (!participantName || participantName.trim().length === 0) {
-      return null;
+    if (!superpowerData.animal || !validAnimals.includes(superpowerData.animal)) {
+      throw new Error(`Invalid animal. Must be one of: ${validAnimals.join(', ')}`);
     }
 
-    const allParticipants = await this.getAllParticipants(gameId);
-    return allParticipants.find(p => p.name === participantName.trim()) || null;
+    if (!superpowerData.power) {
+      throw new Error("Power description is required");
+    }
+
+    return await this.gameRepository.addAnimalSuperpower(gameId, superpowerData);
   }
 
   /**
-   * Update participant's score by a delta, logs the update internally.
-   * This delegates to GameRepository for proper logging.
-   * @param {String} gameId
-   * @param {String} participantName
-   * @param {Number} scoreDelta (can be positive or negative)
-   * @param {Object} io - Socket.io instance
+   * Get applicable superpowers for a game
+   * @param {String} gameId - Game ID
+   * @returns {Array} Applicable superpowers
    */
-  async updateParticipantScore(gameId, participantName, scoreDelta, io) {
-    // Validate inputs
+  async getGameSuperpowers(gameId) {
+    if (!gameId) {
+      throw new Error("Game ID is required");
+    }
+    return await this.gameRepository.getGameSuperpowers(gameId);
+  }
+
+  /**
+   * Add equipment to a game
+   * @param {String} gameId - Game ID
+   * @param {Object} equipmentData - Equipment configuration
+   * @returns {Object} Updated game
+   */
+  async addGameEquipment(gameId, equipmentData) {
     if (!gameId) {
       throw new Error("Game ID is required");
     }
 
-    if (!participantName || participantName.trim().length === 0) {
-      throw new Error("Participant name is required");
+    if (!equipmentData.item) {
+      throw new Error("Equipment item name is required");
     }
 
-    if (typeof scoreDelta !== 'number' || isNaN(scoreDelta)) {
-      throw new Error("Score delta must be a valid number");
-    }
-
-    // Delegate to repository which updates score and logs event
-    return await this.gameRepository.updatePlayerScore(gameId, participantName.trim(), scoreDelta, io);
-  }
-
-  async getLeaderboardForGame(gameId) {
-    if (!gameId) {
-      throw new Error("Game ID is required");
-    }
-
-    // Now delegate to the repository which includes longest streak
-    return await this.gameRepository.getLeaderboardForGame(gameId);
-  }
-
-  /**
-   * Get the player with the longest streak for a game
-   * @param {String} gameId 
-   * @returns {Object|null} Player with longest streak info
-   */
-  async getPlayerWithLongestStreak(gameId) {
-    if (!gameId) {
-      throw new Error("Game ID is required");
-    }
-
-    return await this.gameRepository.getPlayerWithLongestStreak(gameId);
-  }
-
-  /**
-   * Get game statistics including player counts
-   * @param {String} gameId 
-   * @returns {Object} Game statistics
-   */
-  async getGameStats(gameId) {
-    if (!gameId) {
-      throw new Error("Game ID is required");
-    }
-
-    const game = await this.getGameById(gameId);
-    if (!game) {
-      throw new Error("Game not found");
-    }
-
-    const allParticipants = await this.getAllParticipants(gameId);
-    const activeParticipants = allParticipants.filter(p => p.isActive);
-    const inactiveParticipants = allParticipants.filter(p => !p.isActive);
-
-    return {
-      gameId: game._id,
-      gameName: game.name,
-      gameType: game.gameType,
-      isActive: game.isActive,
-      createdAt: game.createdAt,
-      updatedAt: game.updatedAt,
-      totalParticipants: allParticipants.length,
-      activeParticipants: activeParticipants.length,
-      inactiveParticipants: inactiveParticipants.length,
-      totalScoreEvents: game.scoreLog ? game.scoreLog.length : 0,
-      averageScore: activeParticipants.length > 0 
-        ? Math.round(activeParticipants.reduce((sum, p) => sum + p.score, 0) / activeParticipants.length)
-        : 0,
-      highestScore: activeParticipants.length > 0 
-        ? Math.max(...activeParticipants.map(p => p.score))
-        : 0,
-      lowestScore: activeParticipants.length > 0 
-        ? Math.min(...activeParticipants.map(p => p.score))
-        : 0
+    const cleanEquipmentData = {
+      item: equipmentData.item,
+      quantity: equipmentData.quantity || 1,
+      optional: equipmentData.optional || false
     };
+
+    return await this.gameRepository.addGameEquipment(gameId, cleanEquipmentData);
   }
 
   /**
-   * Validate bulk player data before processing
-   * @param {Array} playersData - Array of player objects
-   * @returns {Object} Validation result with valid and invalid players
+   * Add prize to a game
+   * @param {String} gameId - Game ID
+   * @param {Object} prizeData - Prize configuration
+   * @returns {Object} Updated game
    */
-  validateBulkPlayerData(playersData) {
-    return this.gameRepository.validateBulkPlayerData(playersData);
+  async addGamePrize(gameId, prizeData) {
+    if (!gameId) {
+      throw new Error("Game ID is required");
+    }
+
+    const validPrizeTypes = ['points', 'gift_card', 'physical_item', 'food', 'privilege'];
+
+    if (!prizeData.type || !validPrizeTypes.includes(prizeData.type)) {
+      throw new Error(`Invalid prize type. Must be one of: ${validPrizeTypes.join(', ')}`);
+    }
+
+    if (!prizeData.value) {
+      throw new Error("Prize value is required");
+    }
+
+    return await this.gameRepository.addGamePrize(gameId, prizeData);
+  }
+
+  /**
+   * Update game rules
+   * @param {String} gameId - Game ID
+   * @param {Array} rules - Array of rule objects
+   * @returns {Object} Updated game
+   */
+  async updateGameRules(gameId, rules) {
+    if (!gameId) {
+      throw new Error("Game ID is required");
+    }
+
+    if (!Array.isArray(rules)) {
+      throw new Error("Rules must be an array");
+    }
+
+    // Validate rules structure
+    const validatedRules = rules.map((rule, index) => ({
+      title: rule.title || `Rule ${index + 1}`,
+      description: rule.description || '',
+      order: rule.order || index + 1
+    }));
+
+    return await this.gameRepository.updateGameRules(gameId, validatedRules);
+  }
+
+  /**
+   * Update game scoring system
+   * @param {String} gameId - Game ID
+   * @param {Object} scoringSystem - Scoring configuration
+   * @returns {Object} Updated game
+   */
+  async updateScoringSystem(gameId, scoringSystem) {
+    if (!gameId) {
+      throw new Error("Game ID is required");
+    }
+
+    const validScoringMethods = ['fixed', 'variable', 'elimination', 'accumulative', 'position_based'];
+
+    if (scoringSystem.scoringMethod && !validScoringMethods.includes(scoringSystem.scoringMethod)) {
+      throw new Error(`Invalid scoring method. Must be one of: ${validScoringMethods.join(', ')}`);
+    }
+
+    return await this.gameRepository.updateScoringSystem(gameId, scoringSystem);
+  }
+
+  /**
+   * Get game variants
+   * @param {String} gameId - Game ID
+   * @returns {Array} Game variants
+   */
+  async getGameVariants(gameId) {
+    if (!gameId) {
+      throw new Error("Game ID is required");
+    }
+    return await this.gameRepository.getGameVariants(gameId);
+  }
+
+  /**
+   * Add game variant
+   * @param {String} gameId - Game ID
+   * @param {Object} variantData - Variant configuration
+   * @returns {Object} Updated game
+   */
+  async addGameVariant(gameId, variantData) {
+    if (!gameId) {
+      throw new Error("Game ID is required");
+    }
+
+    if (!variantData.name) {
+      throw new Error("Variant name is required");
+    }
+
+    return await this.gameRepository.addGameVariant(gameId, variantData);
+  }
+
+  /**
+   * Get related games
+   * @param {String} gameId - Game ID
+   * @returns {Array} Related games
+   */
+  async getRelatedGames(gameId) {
+    if (!gameId) {
+      throw new Error("Game ID is required");
+    }
+    return await this.gameRepository.getRelatedGames(gameId);
+  }
+
+  /**
+   * Get game statistics
+   * @returns {Object} Overall game statistics
+   */
+  async getGameStatistics() {
+    return await this.gameRepository.getGameStatistics();
+  }
+
+  /**
+   * Get games with media references
+   * @returns {Array} Games with media
+   */
+  async getGamesWithMedia() {
+    return await this.gameRepository.getGamesWithMedia();
+  }
+
+  /**
+   * Add media reference to game
+   * @param {String} gameId - Game ID
+   * @param {Object} mediaData - Media reference data
+   * @returns {Object} Updated game
+   */
+  async addMediaReference(gameId, mediaData) {
+    if (!gameId) {
+      throw new Error("Game ID is required");
+    }
+
+    const validMediaTypes = ['video', 'image', 'audio', 'link'];
+
+    if (!mediaData.type || !validMediaTypes.includes(mediaData.type)) {
+      throw new Error(`Invalid media type. Must be one of: ${validMediaTypes.join(', ')}`);
+    }
+
+    if (!mediaData.url) {
+      throw new Error("Media URL is required");
+    }
+
+    return await this.gameRepository.addMediaReference(gameId, mediaData);
+  }
+
+  /**
+   * Manage game tags
+   * @param {String} gameId - Game ID
+   * @param {Array} tags - Tags to add
+   * @returns {Object} Updated game
+   */
+  async addGameTags(gameId, tags) {
+    if (!gameId) {
+      throw new Error("Game ID is required");
+    }
+
+    if (!Array.isArray(tags) || tags.length === 0) {
+      throw new Error("Tags must be a non-empty array");
+    }
+
+    return await this.gameRepository.addGameTags(gameId, tags);
+  }
+
+  /**
+   * Remove game tags
+   * @param {String} gameId - Game ID
+   * @param {Array} tags - Tags to remove
+   * @returns {Object} Updated game
+   */
+  async removeGameTags(gameId, tags) {
+    if (!gameId) {
+      throw new Error("Game ID is required");
+    }
+
+    if (!Array.isArray(tags) || tags.length === 0) {
+      throw new Error("Tags must be a non-empty array");
+    }
+
+    return await this.gameRepository.removeGameTags(gameId, tags);
+  }
+
+  /**
+   * Get games by tags
+   * @param {Array} tags - Tags to search for
+   * @returns {Array} Games with matching tags
+   */
+  async getGamesByTags(tags) {
+    if (!Array.isArray(tags) || tags.length === 0) {
+      throw new Error("Tags must be a non-empty array");
+    }
+    return await this.gameRepository.getGamesByTags(tags);
   }
 }
 

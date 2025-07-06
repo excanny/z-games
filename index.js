@@ -1,23 +1,26 @@
-require("dotenv").config();
-const express = require("express");
-const cors = require("cors");
-const http = require("http");          // <-- Required for Socket.IO
-const socketIO = require("socket.io"); // <-- Socket.IO import
-const connectDB = require("./src/config/db");
-const { swaggerUi, swaggerSpec } = require("./swagger");
+import "dotenv/config";
+import express from "express";
+import cors from "cors";
+import { createServer } from "http";
+import { Server } from "socket.io";
+import connectDB from "./src/config/db.js";
+import { swaggerUi, swaggerSpec } from "./swagger.js";
 
 // Import routes
-const authRoutes = require("./src/infrastructure/routes/authRoutes");
-const gameRoutes = require("./src/infrastructure/routes/gameRoutes");
+import authRoutes from "./src/infrastructure/routes/authRoutes.js";
+import gameRoutes from "./src/infrastructure/routes/gameRoutes.js";
+import tournamentRoutes from "./src/infrastructure/routes/tournamentRoutes.js";
+import leaderboardScoringRoutes from "./src/infrastructure/routes/leaderboardScoringRoutes.js";
+
 
 // Initialize Express app
 const app = express();
 
 // Create HTTP server (needed for Socket.IO)
-const server = http.createServer(app);
+const server = createServer(app);
 
 // Initialize Socket.IO
-const io = socketIO(server, {
+const io = new Server(server, {
   cors: {
     origin: "http://localhost:5173",
     methods: ["GET", "POST", "PATCH"],
@@ -46,6 +49,8 @@ app.use(express.json());
 // Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/games", gameRoutes);
+app.use("/api/tournaments", tournamentRoutes);
+app.use("/api/leaderboardScoring", leaderboardScoringRoutes);
 // app.use("/api/payments", paymentRoutes); // Uncomment if needed
 
 // Swagger docs

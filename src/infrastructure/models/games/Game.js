@@ -11,6 +11,10 @@ const gameSchema = new mongoose.Schema({
     enum: ['team', 'individual', 'general'],
     required: true
   },
+  gameCode:{
+    type: String,
+    required: true
+  },
   description: String,
   rules: [String],
   pointSystem: {

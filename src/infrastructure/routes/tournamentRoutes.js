@@ -263,6 +263,9 @@ const tournamentController = new TournamentController();
  *         avatarName:
  *           type: string
  *           example: "Tiger"
+ *         animalAvatar:
+ *           type: string
+ *           example: "tiger"
  *     Team:
  *       type: object
  *       properties:
@@ -302,31 +305,75 @@ const tournamentController = new TournamentController();
  *           items:
  *             $ref: '#/components/schemas/Team'
  *           minItems: 1
- *     TeamScore:
+ *     CreateTeamRequest:
  *       type: object
+ *       required:
+ *         - name
+ *         - players
  *       properties:
- *         teamId:
+ *         name:
  *           type: string
- *         score:
- *           type: number
- *         playerScores:
+ *           example: "New Team"
+ *         players:
  *           type: array
  *           items:
  *             type: object
+ *             required:
+ *               - name
  *             properties:
- *               playerId:
+ *               name:
  *                 type: string
- *               score:
- *                 type: number
- *               achievements:
- *                 type: array
- *                 items:
- *                   type: string
- *               playTime:
- *                 type: number
- *               completedAt:
+ *                 example: "Player Name"
+ *               avatar:
  *                 type: string
- *                 format: date-time
+ *                 example: "🐯"
+ *               animalAvatar:
+ *                 type: string
+ *                 example: "tiger"
+ *           minItems: 1
+ *     CreatePlayerRequest:
+ *       type: object
+ *       required:
+ *         - name
+ *       properties:
+ *         name:
+ *           type: string
+ *           example: "Player Name"
+ *         avatar:
+ *           type: string
+ *           example: "🐯"
+ *         animalAvatar:
+ *           type: string
+ *           example: "tiger"
+ *     MovePlayerRequest:
+ *       type: object
+ *       required:
+ *         - fromTeamId
+ *         - toTeamId
+ *       properties:
+ *         fromTeamId:
+ *           type: string
+ *           example: "team1"
+ *         toTeamId:
+ *           type: string
+ *           example: "team2"
+ *     UpdateStatusRequest:
+ *       type: object
+ *       required:
+ *         - status
+ *       properties:
+ *         status:
+ *           type: string
+ *           enum: [pending, in_progress, completed, cancelled]
+ *           example: "in_progress"
+ *     SetCurrentGameRequest:
+ *       type: object
+ *       required:
+ *         - gameId
+ *       properties:
+ *         gameId:
+ *           type: string
+ *           example: "game123"
  */
 
 // ===== TOURNAMENT MANAGEMENT ROUTES =====
@@ -525,13 +572,47 @@ router.get('/:id', tournamentController.getTournamentById.bind(tournamentControl
 router.put('/:id', tournamentController.updateTournament.bind(tournamentController));
 router.delete('/:id', tournamentController.deleteTournament.bind(tournamentController));
 
+// ===== TEAM MANAGEMENT ROUTES =====
+
 /**
  * @swagger
  * /tournaments/{tournamentId}/teams:
  *   post:
- *     summary: Add team to tournament
+ *     summary: Add new team to tournament
  *     tags: [Tournaments]
- *     description: Add an existing team to the tournament
+ *     description: Add a new team with players to an existing tournament
+ *     parameters:
+ *       - in: path
+ *         name: tournamentId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Tournament ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/CreateTeamRequest'
+ *     responses:
+ *       201:
+ *         description: Team added successfully
+ *       400:
+ *         description: Invalid team data
+ *       404:
+ *         description: Tournament not found
+ *       500:
+ *         description: Server error
+ */
+router.post('/:tournamentId/teams', tournamentController.addNewTeamToTournament.bind(tournamentController));
+
+/**
+ * @swagger
+ * /tournaments/{tournamentId}/add-team:
+ *   post:
+ *     summary: Add new team to tournament
+ *     tags: [Tournaments]
+ *     description: Create a new team and add it to the tournament
  *     parameters:
  *       - in: path
  *         name: tournamentId
@@ -546,21 +627,393 @@ router.delete('/:id', tournamentController.deleteTournament.bind(tournamentContr
  *           schema:
  *             type: object
  *             required:
- *               - teamId
+ *               - teamName
  *             properties:
- *               teamId:
+ *               teamName:
  *                 type: string
- *                 description: Team ID to add to tournament
+ *                 description: Name of the team to create and add to tournament
+ *                 example: "Big Team"
  *     responses:
  *       200:
- *         description: Team added successfully
+ *         description: Team created and added successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Team added to tournament"
+ *                 data:
+ *                   type: object
+ *                   description: Updated tournament object
  *       400:
- *         description: Invalid team ID
+ *         description: Invalid team name or team already exists
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Team name is required"
+ *       404:
+ *         description: Tournament not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Tournament not found"
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Failed to add team to tournament"
+ *                 error:
+ *                   type: string
+ *                   example: "Error message details"
+ */
+router.post('/:tournamentId/add-team', tournamentController.addTeamToTournament.bind(tournamentController));
+
+/**
+ * @swagger
+ * /tournaments/{tournamentId}/teams/{teamId}:
+ *   get:
+ *     summary: Get team with players
+ *     tags: [Tournaments]
+ *     description: Get team details including all players
+ *     parameters:
+ *       - in: path
+ *         name: tournamentId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Tournament ID
+ *       - in: path
+ *         name: teamId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Team ID
+ *     responses:
+ *       200:
+ *         description: Team retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   $ref: '#/components/schemas/Team'
+ *       404:
+ *         description: Team not found
+ *       500:
+ *         description: Server error
+ *   put:
+ *     summary: Update team information
+ *     tags: [Tournaments]
+ *     description: Update team details
+ *     parameters:
+ *       - in: path
+ *         name: tournamentId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Tournament ID
+ *       - in: path
+ *         name: teamId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Team ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *               players:
+ *                 type: array
+ *                 items:
+ *                   $ref: '#/components/schemas/Player'
+ *     responses:
+ *       200:
+ *         description: Team updated successfully
+ *       404:
+ *         description: Team not found
+ *       500:
+ *         description: Server error
+ *   delete:
+ *     summary: Remove team from tournament
+ *     tags: [Tournaments]
+ *     description: Remove a team from the tournament
+ *     parameters:
+ *       - in: path
+ *         name: tournamentId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Tournament ID
+ *       - in: path
+ *         name: teamId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Team ID
+ *     responses:
+ *       200:
+ *         description: Team removed successfully
+ *       404:
+ *         description: Team not found
+ *       500:
+ *         description: Server error
+ */
+router.get('/:tournamentId/teams/:teamId', tournamentController.getTeamWithPlayers.bind(tournamentController));
+router.put('/:tournamentId/teams/:teamId', tournamentController.updateTeam.bind(tournamentController));
+router.delete('/:tournamentId/teams/:teamId', tournamentController.removeTeamFromTournament.bind(tournamentController));
+
+// ===== PLAYER MANAGEMENT ROUTES =====
+
+/**
+ * @swagger
+ * /tournaments/{tournamentId}/teams/{teamId}/players:
+ *   post:
+ *     summary: Add player to team
+ *     tags: [Tournaments]
+ *     description: Add a new player to an existing team
+ *     parameters:
+ *       - in: path
+ *         name: tournamentId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Tournament ID
+ *       - in: path
+ *         name: teamId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Team ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/CreatePlayerRequest'
+ *           example:
+ *             name: "Player Name"
+ *             animalAvatar: "tiger"
+ *     responses:
+ *       201:
+ *         description: Player added successfully
+ *       400:
+ *         description: Invalid player data
  *       404:
  *         description: Tournament or team not found
  *       500:
  *         description: Server error
  */
-router.post('/:tournamentId/teams', tournamentController.addTeamToTournament.bind(tournamentController));
+router.post('/:tournamentId/teams/:teamId/players', tournamentController.addPlayerToTeam.bind(tournamentController));
+
+/**
+ * @swagger
+ * /tournaments/{tournamentId}/teams/{teamId}/players/{playerId}:
+ *   put:
+ *     summary: Update player information
+ *     tags: [Tournaments]
+ *     description: Update player details
+ *     parameters:
+ *       - in: path
+ *         name: tournamentId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Tournament ID
+ *       - in: path
+ *         name: teamId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Team ID
+ *       - in: path
+ *         name: playerId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Player ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *               avatar:
+ *                 type: string
+ *               animalAvatar:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Player updated successfully
+ *       404:
+ *         description: Player not found
+ *       500:
+ *         description: Server error
+ *   delete:
+ *     summary: Remove player from team
+ *     tags: [Tournaments]
+ *     description: Remove a player from the team
+ *     parameters:
+ *       - in: path
+ *         name: tournamentId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Tournament ID
+ *       - in: path
+ *         name: teamId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Team ID
+ *       - in: path
+ *         name: playerId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Player ID
+ *     responses:
+ *       200:
+ *         description: Player removed successfully
+ *       404:
+ *         description: Player not found
+ *       500:
+ *         description: Server error
+ */
+router.put('/:tournamentId/teams/:teamId/players/:playerId', tournamentController.updatePlayer.bind(tournamentController));
+router.delete('/:tournamentId/teams/:teamId/players/:playerId', tournamentController.removePlayerFromTeam.bind(tournamentController));
+
+/**
+ * @swagger
+ * /tournaments/{tournamentId}/players/{playerId}/move:
+ *   put:
+ *     summary: Move player between teams
+ *     tags: [Tournaments]
+ *     description: Move a player from one team to another within the same tournament
+ *     parameters:
+ *       - in: path
+ *         name: tournamentId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Tournament ID
+ *       - in: path
+ *         name: playerId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Player ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/MovePlayerRequest'
+ *     responses:
+ *       200:
+ *         description: Player moved successfully
+ *       400:
+ *         description: Invalid team IDs or same source/destination
+ *       404:
+ *         description: Player or teams not found
+ *       500:
+ *         description: Server error
+ */
+router.put('/:tournamentId/players/:playerId/move', tournamentController.movePlayerBetweenTeams.bind(tournamentController));
+
+// ===== TOURNAMENT STATUS MANAGEMENT ROUTES =====
+
+/**
+ * @swagger
+ * /tournaments/{tournamentId}/status:
+ *   put:
+ *     summary: Update tournament status
+ *     tags: [Tournaments]
+ *     description: Update the status of a tournament
+ *     parameters:
+ *       - in: path
+ *         name: tournamentId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Tournament ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/UpdateStatusRequest'
+ *     responses:
+ *       200:
+ *         description: Tournament status updated successfully
+ *       400:
+ *         description: Invalid status value
+ *       404:
+ *         description: Tournament not found
+ *       500:
+ *         description: Server error
+ */
+router.put('/:tournamentId/status', tournamentController.updateTournamentStatus.bind(tournamentController));
+
+/**
+ * @swagger
+ * /tournaments/{tournamentId}/advance-round:
+ *   put:
+ *     summary: Advance tournament to next round
+ *     tags: [Tournaments]
+ *     description: Advance the tournament to the next round
+ *     parameters:
+ *       - in: path
+ *         name: tournamentId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Tournament ID
+ *     responses:
+ *       200:
+ *         description: Tournament advanced successfully
+ *       404:
+ *         description: Tournament not found
+ *       500:
+ *         description: Server error
+ */
+router.put('/:tournamentId/advance-round', tournamentController.advanceToNextRound.bind(tournamentController));
 
 export default router;

@@ -188,6 +188,423 @@ class TournamentController {
       });
     }
   }
+
+  // Add these methods to your TournamentController class
+
+// ===== TEAM MANAGEMENT METHODS =====
+
+/**
+ * Add a new team with players to an existing tournament
+ * POST /tournaments/:tournamentId/teams
+ */
+async addNewTeamToTournament(req, res) {
+  try {
+    const { tournamentId } = req.params;
+    const teamData = req.body;
+
+    // Validate team data
+    if (!teamData.name) {
+      return res.status(400).json({
+        success: false,
+        message: 'Team name is required'
+      });
+    }
+
+    if (!Array.isArray(teamData.players) || teamData.players.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'At least one player is required for the team'
+      });
+    }
+
+    // Validate player data
+    const hasValidPlayers = teamData.players.every(player => 
+      player.name && (player.avatar || player.animalAvatar)
+    );
+
+    if (!hasValidPlayers) {
+      return res.status(400).json({
+        success: false,
+        message: 'Each player must have a name and avatar'
+      });
+    }
+
+    const tournament = await this.tournamentRepository.addTeamToTournament(tournamentId, teamData);
+
+    res.status(201).json({
+      success: true,
+      message: 'Team added to tournament successfully',
+      data: tournament
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to add team to tournament',
+      error: error.message
+    });
+  }
+}
+
+/**
+ * Add existing team to tournament (legacy method)
+ * POST /tournaments/:tournamentId/add-team
+ */
+async addTeamToTournament(req, res) {
+  try {
+    const { tournamentId } = req.params;
+    const { teamName } = req.body;
+
+    if (!teamName) {
+      return res.status(400).json({
+        success: false,
+        message: 'Team name is required'
+      });
+    }
+
+    const tournament = await this.tournamentRepository.addTeam(tournamentId, teamName);
+
+    res.status(200).json({
+      success: true,
+      message: 'Team added to tournament',
+      data: tournament
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to add team to tournament',
+      error: error.message
+    });
+  }
+}
+
+/**
+ * Remove a team from tournament
+ * DELETE /tournaments/:tournamentId/teams/:teamId
+ */
+async removeTeamFromTournament(req, res) {
+  try {
+    const { tournamentId, teamId } = req.params;
+
+    const tournament = await this.tournamentRepository.removeTeamFromTournament(tournamentId, teamId);
+
+    res.status(200).json({
+      success: true,
+      message: 'Team removed from tournament successfully',
+      data: tournament
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to remove team from tournament',
+      error: error.message
+    });
+  }
+}
+
+/**
+ * Update team information
+ * PUT /tournaments/:tournamentId/teams/:teamId
+ */
+async updateTeam(req, res) {
+  try {
+    const { teamId } = req.params;
+    const updateData = req.body;
+
+    const updatedTeam = await this.tournamentRepository.updateTeam(teamId, updateData);
+
+    res.status(200).json({
+      success: true,
+      message: 'Team updated successfully',
+      data: updatedTeam
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update team',
+      error: error.message
+    });
+  }
+}
+
+/**
+ * Get team details with players
+ * GET /tournaments/:tournamentId/teams/:teamId
+ */
+async getTeamWithPlayers(req, res) {
+  try {
+    const { teamId } = req.params;
+
+    const team = await this.tournamentRepository.getTeamWithPlayers(teamId);
+
+    res.status(200).json({
+      success: true,
+      data: team
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get team details',
+      error: error.message
+    });
+  }
+}
+
+// ===== PLAYER MANAGEMENT METHODS =====
+
+/**
+ * Add a player to an existing team
+ * POST /tournaments/:tournamentId/teams/:teamId/players
+ */
+async addPlayerToTeam(req, res) {
+  try {
+    const { tournamentId, teamId } = req.params;
+    const playerData = req.body;
+
+    // Validate player data
+    if (!playerData.name) {
+      return res.status(400).json({
+        success: false,
+        message: 'Player name is required'
+      });
+    }
+
+    if (!playerData.avatar && !playerData.animalAvatar) {
+      return res.status(400).json({
+        success: false,
+        message: 'Player avatar is required'
+      });
+    }
+
+    const team = await this.tournamentRepository.addPlayerToTeam(tournamentId, teamId, playerData);
+
+    res.status(201).json({
+      success: true,
+      message: 'Player added to team successfully',
+      data: team
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to add player to team',
+      error: error.message
+    });
+  }
+}
+
+/**
+ * Remove a player from a team
+ * DELETE /tournaments/:tournamentId/teams/:teamId/players/:playerId
+ */
+async removePlayerFromTeam(req, res) {
+  try {
+    const { tournamentId, teamId, playerId } = req.params;
+
+    const team = await this.tournamentRepository.removePlayerFromTeam(tournamentId, teamId, playerId);
+
+    res.status(200).json({
+      success: true,
+      message: 'Player removed from team successfully',
+      data: team
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to remove player from team',
+      error: error.message
+    });
+  }
+}
+
+/**
+ * Update player information
+ * PUT /tournaments/:tournamentId/teams/:teamId/players/:playerId
+ */
+async updatePlayer(req, res) {
+  try {
+    const { playerId } = req.params;
+    const updateData = req.body;
+
+    const updatedPlayer = await this.tournamentRepository.updatePlayer(playerId, updateData);
+
+    res.status(200).json({
+      success: true,
+      message: 'Player updated successfully',
+      data: updatedPlayer
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update player',
+      error: error.message
+    });
+  }
+}
+
+/**
+ * Move a player from one team to another
+ * PUT /tournaments/:tournamentId/players/:playerId/move
+ */
+async movePlayerBetweenTeams(req, res) {
+  try {
+    const { tournamentId, playerId } = req.params;
+    const { fromTeamId, toTeamId } = req.body;
+
+    if (!fromTeamId || !toTeamId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Both fromTeamId and toTeamId are required'
+      });
+    }
+
+    if (fromTeamId === toTeamId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Source and destination teams cannot be the same'
+      });
+    }
+
+    const result = await this.tournamentRepository.movePlayerBetweenTeams(
+      tournamentId, 
+      playerId, 
+      fromTeamId, 
+      toTeamId
+    );
+
+    res.status(200).json({
+      success: true,
+      message: 'Player moved between teams successfully',
+      data: result
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to move player between teams',
+      error: error.message
+    });
+  }
+}
+
+// ===== TOURNAMENT STATUS MANAGEMENT =====
+
+/**
+ * Update tournament status
+ * PUT /tournaments/:tournamentId/status
+ */
+async updateTournamentStatus(req, res) {
+  try {
+    const { tournamentId } = req.params;
+    const { status } = req.body;
+
+    if (!status) {
+      return res.status(400).json({
+        success: false,
+        message: 'Status is required'
+      });
+    }
+
+    // Validate status values
+    const validStatuses = ['pending', 'in_progress', 'completed', 'cancelled'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Status must be one of: ${validStatuses.join(', ')}`
+      });
+    }
+
+    const tournament = await this.tournamentRepository.updateTournamentStatus(tournamentId, status);
+
+    res.status(200).json({
+      success: true,
+      message: 'Tournament status updated successfully',
+      data: tournament
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update tournament status',
+      error: error.message
+    });
+  }
+}
+
+/**
+ * Advance tournament to next round
+ * PUT /tournaments/:tournamentId/advance-round
+ */
+async advanceToNextRound(req, res) {
+  try {
+    const { tournamentId } = req.params;
+
+    const tournament = await this.tournamentRepository.advanceToNextRound(tournamentId);
+
+    res.status(200).json({
+      success: true,
+      message: 'Tournament advanced to next round successfully',
+      data: tournament
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to advance tournament to next round',
+      error: error.message
+    });
+  }
+}
+
+/**
+ * Set current game for tournament
+ * PUT /tournaments/:tournamentId/current-game
+ */
+async setCurrentGame(req, res) {
+  try {
+    const { tournamentId } = req.params;
+    const { gameId } = req.body;
+
+    if (!gameId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Game ID is required'
+      });
+    }
+
+    const tournament = await this.tournamentRepository.setCurrentGame(tournamentId, gameId);
+
+    res.status(200).json({
+      success: true,
+      message: 'Current game set successfully',
+      data: tournament
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to set current game',
+      error: error.message
+    });
+  }
+}
+
+/**
+ * Get tournament statistics
+ * GET /tournaments/:tournamentId/stats
+ */
+async getTournamentStats(req, res) {
+  try {
+    const { tournamentId } = req.params;
+
+    const stats = await this.tournamentRepository.getTournamentStats(tournamentId);
+
+    res.status(200).json({
+      success: true,
+      data: stats
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get tournament statistics',
+      error: error.message
+    });
+  }
+}
 }
 
 export default TournamentController;

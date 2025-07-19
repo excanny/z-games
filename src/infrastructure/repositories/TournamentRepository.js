@@ -4,6 +4,7 @@ import Player from '../models/games/Player.js';
 import Team from '../models/games/Team.js';
 import Animal from '../models/games/Animal.js';
 import Game from '../models/games/Game.js';
+import mongoose from 'mongoose';
 
 class TournamentRepository extends BaseRepository {
   constructor() {
@@ -81,6 +82,7 @@ class TournamentRepository extends BaseRepository {
           overallPlayerRankings: [],
           winner: null
         },
+        isActive: false,
         settings: {
           enableSuperpowers: true,
           monkeyDanceEnabled: true,
@@ -174,52 +176,30 @@ class TournamentRepository extends BaseRepository {
 }
 
   // Method to update tournament status
-  async updateTournamentStatus(tournamentId, status) {
+  async updateTournamentStatus(tournamentId, isActive) {
     try {
       const tournament = await this.model.findById(tournamentId);
       if (!tournament) throw new Error('Tournament not found');
 
-      tournament.status = status;
+      // If activating this tournament, deactivate all other active tournaments
+      if (isActive === true) {
+        await this.model.updateMany(
+          { _id: { $ne: tournamentId }, isActive: true },
+          { $set: { isActive: false } }
+        );
+      }
+
+      tournament.isActive = isActive;
       
-      // If completing tournament, update overall leaderboard and set winner
-      if (status === 'completed') {
-        await tournament.updateOverallLeaderboard();
+      // If deactivating/completing tournament, update overall leaderboard
+      if (isActive === false) {
+        await tournament.calculateOverallLeaderboard();
       }
 
       await tournament.save();
       return tournament;
     } catch (error) {
       throw new Error(`Error updating tournament status: ${error.message}`);
-    }
-  }
-
-  // Method to advance to next round
-  async advanceToNextRound(tournamentId) {
-    try {
-      const tournament = await this.model.findById(tournamentId);
-      if (!tournament) throw new Error('Tournament not found');
-
-      tournament.currentRoundNumber += 1;
-      tournament.currentMatchNumber = 1;
-      
-      await tournament.save();
-      return tournament;
-    } catch (error) {
-      throw new Error(`Error advancing to next round: ${error.message}`);
-    }
-  }
-
-  // Method to set current game
-  async setCurrentGame(tournamentId, gameId) {
-    try {
-      const tournament = await this.model.findById(tournamentId);
-      if (!tournament) throw new Error('Tournament not found');
-
-      tournament.currentGameId = gameId;
-      await tournament.save();
-      return tournament;
-    } catch (error) {
-      throw new Error(`Error setting current game: ${error.message}`);
     }
   }
 
@@ -254,84 +234,84 @@ class TournamentRepository extends BaseRepository {
     }
   }
 
-async findById(id) {
-  try {
-    const tournament = await this.model.findById(id)
-      .populate({
-        path: 'teams',
-        populate: {
-          path: 'players',
+  async findById(id) {
+    try {
+      const tournament = await this.model.findById(id)
+        .populate({
+          path: 'teams',
           populate: {
-            path: 'animalAvatar',
-            model: 'Animal'
+            path: 'players',
+            populate: {
+              path: 'animalAvatar',
+              model: 'Animal'
+            }
           }
+        })
+        .populate('selectedGames', 'name description category');
+
+      // Return null if tournament not found
+      if (!tournament) {
+        return null;
+      }
+
+      // Calculate total scores and rank teams
+      if (tournament.teams && tournament.leaderboard) {
+        // Create a map to store total scores for each team
+        const teamTotalScores = new Map();
+        
+        // Initialize all teams with 0 score
+        tournament.teams.forEach(team => {
+          teamTotalScores.set(team._id.toString(), 0);
+        });
+        
+        // Calculate total scores from leaderboard
+        if (tournament.leaderboard.gameLeaderboards) {
+          tournament.leaderboard.gameLeaderboards.forEach(gameLeaderboard => {
+            if (gameLeaderboard.teamScores) {
+              gameLeaderboard.teamScores.forEach(teamScore => {
+                const teamId = teamScore.teamId.toString();
+                const currentTotal = teamTotalScores.get(teamId) || 0;
+                teamTotalScores.set(teamId, currentTotal + (teamScore.totalScore || 0));
+              });
+            }
+          });
         }
-      })
-      .populate('selectedGames', 'name description category');
-
-    // Return null if tournament not found
-    if (!tournament) {
-      return null;
-    }
-
-    // Calculate total scores and rank teams
-    if (tournament.teams && tournament.leaderboard) {
-      // Create a map to store total scores for each team
-      const teamTotalScores = new Map();
-      
-      // Initialize all teams with 0 score
-      tournament.teams.forEach(team => {
-        teamTotalScores.set(team._id.toString(), 0);
-      });
-      
-      // Calculate total scores from leaderboard
-      if (tournament.leaderboard.gameLeaderboards) {
-        tournament.leaderboard.gameLeaderboards.forEach(gameLeaderboard => {
-          if (gameLeaderboard.teamScores) {
-            gameLeaderboard.teamScores.forEach(teamScore => {
-              const teamId = teamScore.teamId.toString();
-              const currentTotal = teamTotalScores.get(teamId) || 0;
-              teamTotalScores.set(teamId, currentTotal + (teamScore.totalScore || 0));
-            });
-          }
+        
+        // Add total scores to team objects
+        tournament.teams.forEach(team => {
+          const totalScore = teamTotalScores.get(team._id.toString()) || 0;
+          // Make sure the property is added to the actual object
+          team.totalScore = totalScore;
+          team.set('totalScore', totalScore); // For Mongoose documents
+        });
+        
+        // Sort teams by total score in descending order (highest score first)
+        tournament.teams.sort((a, b) => (b.totalScore || 0) - (a.totalScore || 0));
+        
+        // Add rank numbers to each team
+        tournament.teams.forEach((team, index) => {
+          const rank = index + 1;
+          team.rank = rank;
+          team.set('rank', rank); // For Mongoose documents
         });
       }
-      
-      // Add total scores to team objects
-      tournament.teams.forEach(team => {
-        const totalScore = teamTotalScores.get(team._id.toString()) || 0;
-        // Make sure the property is added to the actual object
-        team.totalScore = totalScore;
-        team.set('totalScore', totalScore); // For Mongoose documents
-      });
-      
-      // Sort teams by total score in descending order (highest score first)
-      tournament.teams.sort((a, b) => (b.totalScore || 0) - (a.totalScore || 0));
-      
-      // Add rank numbers to each team
-      tournament.teams.forEach((team, index) => {
-        const rank = index + 1;
-        team.rank = rank;
-        team.set('rank', rank); // For Mongoose documents
-      });
-    }
 
-    // Convert to plain object to ensure custom properties are included
-    const plainTournament = tournament.toObject();
-    
-    // Re-add the calculated properties to the plain object
-    if (plainTournament.teams && tournament.teams) {
-      plainTournament.teams.forEach((team, index) => {
-        team.totalScore = tournament.teams[index].totalScore;
-        team.rank = tournament.teams[index].rank;
-      });
-    }
+      // Convert to plain object to ensure custom properties are included
+      const plainTournament = tournament.toObject();
+      
+      // Re-add the calculated properties to the plain object
+      if (plainTournament.teams && tournament.teams) {
+        plainTournament.teams.forEach((team, index) => {
+          team.totalScore = tournament.teams[index].totalScore;
+          team.rank = tournament.teams[index].rank;
+        });
+      }
 
-    return plainTournament;
-  } catch (error) {
-    throw new Error(`Error finding tournament: ${error.message}`);
+      return plainTournament;
+    } catch (error) {
+      throw new Error(`Error finding tournament: ${error.message}`);
+    }
   }
-}
 
   async update(id, updateData) {
     try {
@@ -396,8 +376,6 @@ async findById(id) {
       throw new Error(`Error getting tournament stats: ${error.message}`);
     }
   }
-
-  // Add these methods to your TournamentRepository class
 
 /**
  * Add a new team to an existing tournament
@@ -471,6 +449,8 @@ async addTeamToTournament(tournamentId, teamData) {
  */
 async addPlayerToTeam(tournamentId, teamId, playerData) {
   try {
+
+
     const tournament = await this.model.findById(tournamentId);
     if (!tournament) throw new Error('Tournament not found');
 
@@ -504,6 +484,8 @@ async addPlayerToTeam(tournamentId, teamId, playerData) {
       score: 0,
       contributionPercentage: 0,
     });
+
+    console.log("newPlayer o", newPlayer)
 
     // Add player to team
     team.players.push(newPlayer._id);
@@ -725,27 +707,76 @@ async movePlayerBetweenTeams(tournamentId, playerId, fromTeamId, toTeamId) {
   }
 }
 
-/**
- * Get team details with players
- * @param {string} teamId - The team ID
- * @returns {Promise<Object>} Team with populated players
- */
-async getTeamWithPlayers(teamId) {
+  /**
+   * Get team details with players
+   * @param {string} teamId - The team ID
+   * @returns {Promise<Object>} Team with populated players
+   */
+  async getTeamWithPlayers(teamId) {
+    try {
+      const team = await this.teamModel.findById(teamId)
+        .populate({
+          path: 'players',
+          populate: {
+            path: 'animalAvatar',
+            model: 'Animal'
+          }
+        });
+
+      if (!team) throw new Error('Team not found');
+
+      return team;
+    } catch (error) {
+      throw new Error(`Error getting team with players: ${error.message}`);
+    }
+  }
+
+  async getLeaderboardForTournament() {
   try {
-    const team = await this.teamModel.findById(teamId)
+    // Find the active tournament and populate necessary fields
+    const tournament = await this.model.findOne({ isActive: true })
       .populate({
-        path: 'players',
+        path: 'teams',
         populate: {
-          path: 'animalAvatar',
-          model: 'Animal'
+          path: 'players',
+          populate: {
+            path: 'animalAvatar'
+          }
         }
-      });
+      })
+      .populate('selectedGames')
+      .exec();
 
-    if (!team) throw new Error('Team not found');
+    // Return null if no active tournament found
+    if (!tournament) {
+      return null;
+    }
 
-    return team;
+    // Check leaderboard structure
+    if (!tournament.leaderboard) {
+      tournament.leaderboard = {
+        lastUpdated: new Date(),
+        gameLeaderboards: [],
+        overallLeaderboard: {
+          teamRankings: [],
+          playerRankings: [],
+          lastUpdated: new Date()
+        }
+      };
+    }
+
+    console.log('=== DEBUG: Returning leaderboard data ===');
+    return {
+      leaderboard: tournament.leaderboard,
+      lastUpdated: tournament.leaderboard.lastUpdated,
+      tournamentName: tournament.name,
+      tournamentStatus: tournament.status,
+      teams: tournament.teams,
+      selectedGames: tournament.selectedGames
+    };
+
   } catch (error) {
-    throw new Error(`Error getting team with players: ${error.message}`);
+    throw new Error(`Error retrieving leaderboard: ${error.message}`);
   }
 }
 }

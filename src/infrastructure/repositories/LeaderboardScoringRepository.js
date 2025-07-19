@@ -6,95 +6,260 @@ class LeaderboardScoringRepository {
     this.leaderboardRankingRepository = leaderboardRankingRepository;
   }
 
-  async recordGameScores(tournamentId, gameId, transformedScores, scoreType) {
-    const maxRetries = 3;
-    let lastError;
+  // async recordGameScores(tournamentId, gameId, transformedScores, scoreType, io) {
+  //   const maxRetries = 3;
+  //   let lastError;
     
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        if (!transformedScores || !Array.isArray(transformedScores)) {
-          throw new Error('Transformed scores must be a valid array');
-        }
+  //   for (let attempt = 1; attempt <= maxRetries; attempt++) {
+  //     try {
+  //       if (!transformedScores || !Array.isArray(transformedScores)) {
+  //         throw new Error('Transformed scores must be a valid array');
+  //       }
         
-        const tournament = await this.tournamentRepository.model.findById(
-          new mongoose.Types.ObjectId(tournamentId)
-        );
+  //       const tournament = await this.tournamentRepository.model.findById(
+  //         new mongoose.Types.ObjectId(tournamentId)
+  //       );
         
-        if (!tournament) {
-          throw new Error(`Tournament not found with ID: ${tournamentId}`);
-        }
+  //       if (!tournament) {
+  //         throw new Error(`Tournament not found with ID: ${tournamentId}`);
+  //       }
 
-        if (!tournament.leaderboard) {
-          tournament.leaderboard = {
-            overallLeaderboard: [],
-            gameLeaderboards: [],
-            lastUpdated: new Date()
-          };
-        }
+  //       if (!tournament.leaderboard) {
+  //         tournament.leaderboard = {
+  //           overallLeaderboard: [],
+  //           gameLeaderboards: [],
+  //           lastUpdated: new Date()
+  //         };
+  //       }
 
-        if (!Array.isArray(tournament.leaderboard.gameLeaderboards)) {
-          tournament.leaderboard.gameLeaderboards = [];
-        }
+  //       if (!Array.isArray(tournament.leaderboard.gameLeaderboards)) {
+  //         tournament.leaderboard.gameLeaderboards = [];
+  //       }
 
-        let gameLeaderboard = tournament.leaderboard.gameLeaderboards.find(
-          gl => gl && gl.gameId && gl.gameId.toString() === gameId.toString()
-        );
+  //       let gameLeaderboard = tournament.leaderboard.gameLeaderboards.find(
+  //         gl => gl && gl.gameId && gl.gameId.toString() === gameId.toString()
+  //       );
 
-        if (!gameLeaderboard) {
-          gameLeaderboard = {
-            gameId: gameId,
-            teamScores: [],
-            playerScores: [],
-            scoreHistory: [],
-            lastUpdated: new Date()
-          };
-          tournament.leaderboard.gameLeaderboards.push(gameLeaderboard);
-        }
+  //       if (!gameLeaderboard) {
+  //         gameLeaderboard = {
+  //           gameId: gameId,
+  //           teamScores: [],
+  //           playerScores: [],
+  //           scoreHistory: [],
+  //           lastUpdated: new Date()
+  //         };
+  //         tournament.leaderboard.gameLeaderboards.push(gameLeaderboard);
+  //       }
 
-        this.ensureArraysInitialized(gameLeaderboard);
+  //       this.ensureArraysInitialized(gameLeaderboard);
 
-        const historyEntry = {
-          timestamp: new Date(),
-          scoreType: scoreType,
-          scores: JSON.parse(JSON.stringify(transformedScores)),
-          entryId: new mongoose.Types.ObjectId()
-        };
-        gameLeaderboard.scoreHistory.push(historyEntry);
+  //       const historyEntry = {
+  //         timestamp: new Date(),
+  //         scoreType: scoreType,
+  //         scores: JSON.parse(JSON.stringify(transformedScores)),
+  //         entryId: new mongoose.Types.ObjectId()
+  //       };
+  //       gameLeaderboard.scoreHistory.push(historyEntry);
 
-        if (scoreType === 'team') {
-          await this.processTeamScores(gameLeaderboard, transformedScores);
-        } else {
-          await this.processPlayerScores(gameLeaderboard, transformedScores);
-        }
+  //       if (scoreType === 'team') {
+  //         await this.processTeamScores(gameLeaderboard, transformedScores);
+  //       } else {
+  //         await this.processPlayerScores(gameLeaderboard, transformedScores);
+  //       }
 
-        await this.calculateTeamTotalsWithPlayerScores(gameLeaderboard);
+  //       await this.calculateTeamTotalsWithPlayerScores(gameLeaderboard);
 
-        gameLeaderboard.teamScores.sort((a, b) => 
-          (b.totalScoreWithPlayers || 0) - (a.totalScoreWithPlayers || 0)
-        );
+  //       gameLeaderboard.teamScores.sort((a, b) => 
+  //         (b.totalScoreWithPlayers || 0) - (a.totalScoreWithPlayers || 0)
+  //       );
 
-        gameLeaderboard.lastUpdated = new Date();
-        tournament.leaderboard.lastUpdated = new Date();
+  //       gameLeaderboard.lastUpdated = new Date();
+  //       tournament.leaderboard.lastUpdated = new Date();
 
-        const savedTournament = await tournament.save();
+  //       const savedTournament = await tournament.save();
         
-        await this.leaderboardRankingRepository.calculateOverallLeaderboard(savedTournament);
+  //       await this.leaderboardRankingRepository.calculateOverallLeaderboard(savedTournament);
         
-        const finalTournament = await savedTournament.save();
-        
-        return finalTournament;
+  //       const finalTournament = await savedTournament.save();
 
-      } catch (error) {
-        lastError = error;
-        if (attempt === maxRetries) {
-          throw new Error(`Error recording game scores: ${error.message}`);
-        }
-        await new Promise(resolve => setTimeout(resolve, 100 * attempt));
+  //       // ✅ Emit leaderboard update event
+  //       io.emit('leaderboardUpdated', { gameId });
+        
+  //       return finalTournament;
+
+  //     } catch (error) {
+  //       lastError = error;
+  //       if (attempt === maxRetries) {
+  //         throw new Error(`Error recording game scores: ${error.message}`);
+  //       }
+  //       await new Promise(resolve => setTimeout(resolve, 100 * attempt));
+  //     }
+  //   }
+    
+  //   throw new Error(`Error recording game scores: ${lastError.message}`);
+  // }
+
+  async recordGameScores(tournamentId, gameId, transformedScores, scoreType, io, requestId = null) {
+  // Generate unique request ID for idempotency
+  const uniqueRequestId = requestId || new mongoose.Types.ObjectId().toString();
+  
+  const maxRetries = 3;
+  let lastError;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      // Input validation
+      if (!transformedScores || !Array.isArray(transformedScores)) {
+        throw new Error('Transformed scores must be a valid array');
       }
+      
+      // Use findOneAndUpdate for atomic operation to prevent race conditions
+      const tournament = await this.tournamentRepository.model.findById(
+        new mongoose.Types.ObjectId(tournamentId)
+      );
+      
+      if (!tournament) {
+        throw new Error(`Tournament not found with ID: ${tournamentId}`);
+      }
+
+      // Initialize leaderboard structure if needed
+      if (!tournament.leaderboard) {
+        tournament.leaderboard = {
+          overallLeaderboard: [],
+          gameLeaderboards: [],
+          lastUpdated: new Date()
+        };
+      }
+
+      if (!Array.isArray(tournament.leaderboard.gameLeaderboards)) {
+        tournament.leaderboard.gameLeaderboards = [];
+      }
+
+      // Find or create game leaderboard
+      let gameLeaderboard = tournament.leaderboard.gameLeaderboards.find(
+        gl => gl && gl.gameId && gl.gameId.toString() === gameId.toString()
+      );
+
+      // Check for duplicate request (idempotency)
+      if (gameLeaderboard?.scoreHistory) {
+        const existingEntry = gameLeaderboard.scoreHistory.find(
+          entry => entry.requestId === uniqueRequestId
+        );
+        if (existingEntry) {
+          console.log(`Request ${uniqueRequestId} already processed`);
+          return tournament;
+        }
+      }
+
+      if (!gameLeaderboard) {
+        gameLeaderboard = {
+          gameId: gameId,
+          teamScores: [],
+          playerScores: [],
+          scoreHistory: [],
+          lastUpdated: new Date()
+        };
+        tournament.leaderboard.gameLeaderboards.push(gameLeaderboard);
+      }
+
+      // Ensure arrays are initialized
+      this.ensureArraysInitialized(gameLeaderboard);
+
+      // Create history entry with idempotency key
+      const historyEntry = {
+        timestamp: new Date(),
+        scoreType: scoreType,
+        scores: JSON.parse(JSON.stringify(transformedScores)),
+        entryId: new mongoose.Types.ObjectId(),
+        requestId: uniqueRequestId
+      };
+      
+      // Add to history first
+      gameLeaderboard.scoreHistory.push(historyEntry);
+
+      // Process scores
+      if (scoreType === 'team') {
+        await this.processTeamScores(gameLeaderboard, transformedScores);
+      } else {
+        await this.processPlayerScores(gameLeaderboard, transformedScores);
+      }
+
+      await this.calculateTeamTotalsWithPlayerScores(gameLeaderboard);
+
+      // Sort scores
+      gameLeaderboard.teamScores.sort((a, b) => 
+        (b.totalScoreWithPlayers || 0) - (a.totalScoreWithPlayers || 0)
+      );
+
+      // Update timestamps
+      gameLeaderboard.lastUpdated = new Date();
+      tournament.leaderboard.lastUpdated = new Date();
+
+      // Use findOneAndUpdate with version check for atomic update
+      const savedTournament = await this.tournamentRepository.model.findOneAndUpdate(
+        { 
+          _id: new mongoose.Types.ObjectId(tournamentId),
+          __v: tournament.__v // Optimistic locking
+        },
+        {
+          $set: {
+            leaderboard: tournament.leaderboard,
+            __v: tournament.__v + 1
+          }
+        },
+        { 
+          new: true,
+          runValidators: true
+        }
+      );
+
+      if (!savedTournament) {
+        throw new Error('Tournament was modified by another process. Please retry.');
+      }
+      
+      // Calculate overall leaderboard
+      await this.leaderboardRankingRepository.calculateOverallLeaderboard(savedTournament);
+      
+      // Final save with version increment
+      const finalTournament = await this.tournamentRepository.model.findOneAndUpdate(
+        { _id: savedTournament._id },
+        { $inc: { __v: 1 } },
+        { new: true }
+      );
+
+      // Emit event after successful completion
+      process.nextTick(() => {
+        io.emit('leaderboardUpdated', { 
+          gameId, 
+          tournamentId, 
+          timestamp: new Date(),
+          requestId: uniqueRequestId 
+        });
+      });
+      
+      return finalTournament;
+      
+    } catch (error) {
+      lastError = error;
+      console.error(`Score recording attempt ${attempt} failed:`, error.message);
+      
+      // Check if it's a version conflict (optimistic locking failure)
+      if (error.message.includes('modified by another process')) {
+        console.log(`Optimistic lock conflict on attempt ${attempt}, retrying...`);
+      }
+      
+      if (attempt === maxRetries) {
+        throw new Error(`Error recording game scores after ${maxRetries} attempts: ${error.message}`);
+      }
+      
+      // Exponential backoff with jitter to avoid thundering herd
+      const delay = 100 * Math.pow(2, attempt - 1) + Math.random() * 100;
+      await new Promise(resolve => setTimeout(resolve, delay));
     }
-    
-    throw new Error(`Error recording game scores: ${lastError.message}`);
   }
+  
+  throw new Error(`Error recording game scores: ${lastError?.message || 'Unknown error'}`);
+}
 
   ensureArraysInitialized(gameLeaderboard) {
     if (!Array.isArray(gameLeaderboard.teamScores)) {

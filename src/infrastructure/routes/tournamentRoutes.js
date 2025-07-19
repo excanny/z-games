@@ -1,5 +1,5 @@
 import express from 'express';
-import TournamentController from '../../adapters/controllers/tournamentController.js';
+import TournamentController from '../../adapters/controllers/TournamentController.js';
 
 const router = express.Router();
 
@@ -380,6 +380,85 @@ const tournamentController = new TournamentController();
 
 /**
  * @swagger
+ * /tournaments/{tournamentId}/leaderboard:
+ *   get:
+ *     summary: Get tournament leaderboard
+ *     tags: [Tournaments]
+ *     description: Get the leaderboard for the active tournament with teams, players, and game information
+ *     responses:
+ *       200:
+ *         description: Tournament leaderboard retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     leaderboard:
+ *                       type: object
+ *                       description: Tournament leaderboard data
+ *                     lastUpdated:
+ *                       type: string
+ *                       format: date-time
+ *                       description: When the leaderboard was last updated
+ *                     tournamentName:
+ *                       type: string
+ *                       description: Name of the tournament
+ *                     tournamentStatus:
+ *                       type: string
+ *                       description: Current status of the tournament
+ *                     teams:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         description: Tournament teams with populated players and avatars
+ *                     selectedGames:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         description: Games selected for the tournament
+ *       404:
+ *         description: No active tournament found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Failed to get tournament leaderboard"
+ *                 error:
+ *                   type: string
+ *                   example: "No active tournament found"
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Failed to get tournament leaderboard"
+ *                 error:
+ *                   type: string
+ */
+
+router.get('/:tournamentId/leaderboard', tournamentController.getLeaderboardForTournament.bind(tournamentController));
+
+/**
+ * @swagger
  * /tournaments:
  *   post:
  *     summary: Create a new tournament
@@ -473,6 +552,7 @@ const tournamentController = new TournamentController();
  */
 router.post('/', tournamentController.createTournament.bind(tournamentController));
 router.get('/', tournamentController.getAllTournaments.bind(tournamentController));
+
 
 /**
  * @swagger
@@ -964,9 +1044,9 @@ router.put('/:tournamentId/players/:playerId/move', tournamentController.movePla
  * @swagger
  * /tournaments/{tournamentId}/status:
  *   put:
- *     summary: Update tournament status
+ *     summary: Update tournament active status
  *     tags: [Tournaments]
- *     description: Update the status of a tournament
+ *     description: Activate or deactivate a tournament. When deactivated, the overall leaderboard is calculated.
  *     parameters:
  *       - in: path
  *         name: tournamentId
@@ -979,41 +1059,83 @@ router.put('/:tournamentId/players/:playerId/move', tournamentController.movePla
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/UpdateStatusRequest'
+ *             $ref: '#/components/schemas/UpdateTournamentStatusRequest'
  *     responses:
  *       200:
  *         description: Tournament status updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Tournament activated successfully"
+ *                 data:
+ *                   $ref: '#/components/schemas/Tournament'
  *       400:
- *         description: Invalid status value
+ *         description: Invalid isActive value or missing parameter
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "isActive must be a boolean value (true or false)"
  *       404:
  *         description: Tournament not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Tournament not found"
  *       500:
  *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Failed to update tournament status"
+ *                 error:
+ *                   type: string
+ *                   example: "Error message details"
  */
 router.put('/:tournamentId/status', tournamentController.updateTournamentStatus.bind(tournamentController));
 
 /**
  * @swagger
- * /tournaments/{tournamentId}/advance-round:
- *   put:
- *     summary: Advance tournament to next round
- *     tags: [Tournaments]
- *     description: Advance the tournament to the next round
- *     parameters:
- *       - in: path
- *         name: tournamentId
- *         required: true
- *         schema:
- *           type: string
- *         description: Tournament ID
- *     responses:
- *       200:
- *         description: Tournament advanced successfully
- *       404:
- *         description: Tournament not found
- *       500:
- *         description: Server error
+ * components:
+ *   schemas:
+ *     UpdateTournamentStatusRequest:
+ *       type: object
+ *       required:
+ *         - isActive
+ *       properties:
+ *         isActive:
+ *           type: boolean
+ *           description: Whether the tournament should be active or not
+ *           example: true
+ *       example:
+ *         isActive: true
  */
-router.put('/:tournamentId/advance-round', tournamentController.advanceToNextRound.bind(tournamentController));
 
 export default router;

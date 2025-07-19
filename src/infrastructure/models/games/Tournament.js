@@ -122,8 +122,8 @@ const tournamentSchema = new Schema({
     // Overall leaderboard across all games (NEWLY ADDED)
     overallLeaderboard: overallLeaderboardSchema
   },
-
-  settings: gameSettingsSchema
+  isActive: Boolean,
+  settings: gameSettingsSchema,
 }, { timestamps: true });
 
 // Indexes

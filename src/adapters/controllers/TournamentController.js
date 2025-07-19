@@ -493,29 +493,28 @@ async movePlayerBetweenTeams(req, res) {
 async updateTournamentStatus(req, res) {
   try {
     const { tournamentId } = req.params;
-    const { status } = req.body;
+    const { isActive } = req.body;
 
-    if (!status) {
+    if (isActive === undefined || isActive === null) {
       return res.status(400).json({
         success: false,
-        message: 'Status is required'
+        message: 'isActive is required'
       });
     }
 
-    // Validate status values
-    const validStatuses = ['pending', 'in_progress', 'completed', 'cancelled'];
-    if (!validStatuses.includes(status)) {
+    // Validate isActive is boolean
+    if (typeof isActive !== 'boolean') {
       return res.status(400).json({
         success: false,
-        message: `Status must be one of: ${validStatuses.join(', ')}`
+        message: 'isActive must be a boolean value (true or false)'
       });
     }
 
-    const tournament = await this.tournamentRepository.updateTournamentStatus(tournamentId, status);
+    const tournament = await this.tournamentRepository.updateTournamentStatus(tournamentId, isActive);
 
     res.status(200).json({
       success: true,
-      message: 'Tournament status updated successfully',
+      message: `Tournament ${isActive ? 'activated' : 'deactivated'} successfully`,
       data: tournament
     });
   } catch (error) {
@@ -528,83 +527,63 @@ async updateTournamentStatus(req, res) {
 }
 
 /**
- * Advance tournament to next round
- * PUT /tournaments/:tournamentId/advance-round
- */
-async advanceToNextRound(req, res) {
-  try {
-    const { tournamentId } = req.params;
-
-    const tournament = await this.tournamentRepository.advanceToNextRound(tournamentId);
-
-    res.status(200).json({
-      success: true,
-      message: 'Tournament advanced to next round successfully',
-      data: tournament
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Failed to advance tournament to next round',
-      error: error.message
-    });
-  }
-}
-
-/**
- * Set current game for tournament
- * PUT /tournaments/:tournamentId/current-game
- */
-async setCurrentGame(req, res) {
-  try {
-    const { tournamentId } = req.params;
-    const { gameId } = req.body;
-
-    if (!gameId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Game ID is required'
-      });
-    }
-
-    const tournament = await this.tournamentRepository.setCurrentGame(tournamentId, gameId);
-
-    res.status(200).json({
-      success: true,
-      message: 'Current game set successfully',
-      data: tournament
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Failed to set current game',
-      error: error.message
-    });
-  }
-}
-
-/**
  * Get tournament statistics
  * GET /tournaments/:tournamentId/stats
  */
-async getTournamentStats(req, res) {
-  try {
-    const { tournamentId } = req.params;
+  async getTournamentStats(req, res) {
+    try {
+      const { tournamentId } = req.params;
 
-    const stats = await this.tournamentRepository.getTournamentStats(tournamentId);
+      const stats = await this.tournamentRepository.getTournamentStats(tournamentId);
 
-    res.status(200).json({
-      success: true,
-      data: stats
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get tournament statistics',
-      error: error.message
-    });
+      res.status(200).json({
+        success: true,
+        data: stats
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: 'Failed to get tournament statistics',
+        error: error.message
+      });
+    }
   }
-}
+
+  async getLeaderboardForTournament(req, res) {
+    try {
+      // Your repository method doesn't use tournamentId, it finds active tournament
+      const leaderboardData = await this.tournamentRepository.getLeaderboardForTournament();
+
+      // Check if tournament exists (your repo returns null when no active tournament)
+      if (!leaderboardData) {
+        return res.status(404).json({
+          success: false,
+          message: 'No active tournament found'
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        data: leaderboardData
+      });
+    } catch (error) {
+      // Handle specific database errors
+      if (error.message.includes('Tournament not found') || 
+          error.message.includes('Invalid tournament ID')) {
+        return res.status(404).json({
+          success: false,
+          message: 'Tournament not found'
+        });
+      }
+
+      // Handle other errors
+      res.status(500).json({
+        success: false,
+        message: 'Failed to get tournament leaderboard',
+        error: error.message
+      });
+    }
+  }
 }
 
 export default TournamentController;

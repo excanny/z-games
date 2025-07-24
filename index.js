@@ -19,19 +19,12 @@ const app = express();
 const server = createServer(app);
 
 // Initialize Socket.IO
-// const io = new Server(server, {
-//   cors: {
-//     origin: "http://localhost:5173",
-//     methods: ["GET", "POST", "PATCH"],
-//   },
-// });
-
-app.use(cors({
-  origin: "https://z-games.onrender.com",
-  methods: ["GET", "POST", "PATCH"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-}));
-
+const io = new Server(server, {
+  cors: {
+    origin: "http://localhost:5173",
+    methods: ["GET", "POST", "PATCH"],
+  },
+});
 
 // Make io accessible in routes / controllers
 app.set("io", io);

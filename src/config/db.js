@@ -7,17 +7,18 @@ dotenv.config();
 
 // Database configuration object
 const dbConfig = {
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER, 
-  password: process.env.DB_PASSWORD, 
-  database: process.env.DB_NAME,
-  port: process.env.DB_PORT,
+  host: process.env.DB_HOST || 'mysql-3aec5c12-excanny-1290.e.aivencloud.com',
+  user: process.env.DB_USER || 'avnadmin',
+  password: process.env.DB_PASSWORD || 'AVNS_VW8JRrqPxBlPx6AzFhm',
+  database: process.env.DB_NAME || 'zgames',
+  port: parseInt(process.env.DB_PORT, 10) || 24545,
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
   ssl: false,
   multipleStatements: true
 };
+
 
 // Remove the invalid 'reconnect' option
 delete dbConfig.reconnect;

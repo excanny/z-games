@@ -11,7 +11,8 @@ const swaggerDefinition = {
   },
   servers: [
     {
-      url: 'http://localhost:5000/api', // Update if your API is hosted elsewhere
+      //url: 'http://localhost:5000/api', // Update if your API is hosted elsewhere
+      url: 'https://z-games.onrender.com/api', // Use your actual API URL
       description: 'Local server',
     },
   ],

@@ -1,5 +1,9 @@
 import swaggerJsdoc from 'swagger-jsdoc';
 import swaggerUi from 'swagger-ui-express';
+import dotenv from 'dotenv';
+
+// Load environment variables
+dotenv.config();
 
 // Swagger definition
 const swaggerDefinition = {
@@ -12,7 +16,7 @@ const swaggerDefinition = {
   servers: [
     {
       //url: 'http://localhost:5000/api', // Update if your API is hosted elsewhere
-      url: 'https://z-games.onrender.com/api', // Use your actual API URL
+      url: `${process.env.BASE_URL}/api`, // Use your actual API URL
       description: 'Local server',
     },
   ],

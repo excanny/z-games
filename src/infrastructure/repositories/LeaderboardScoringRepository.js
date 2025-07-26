@@ -50,24 +50,162 @@ class LeaderboardScoringRepository {
       return await this.pool.execute(query, params);
     }
 
+// async recordGameScores(tournamentId, gameId, transformedScores, scoreType, io, requestId = null) {
+//   const uniqueRequestId = requestId || uuidv4();
+
+  
+//   const maxRetries = 3;
+//   let lastError;
+  
+//   for (let attempt = 1; attempt <= maxRetries; attempt++) {
+   
+    
+//     // FIXED: Changed from this.db.getConnection() to this.getConnection()
+//     const connection = await this.getConnection();
+
+    
+//     try {
+    
+//       await connection.beginTransaction();
+      
+      
+//       // Input validation
+//       if (!transformedScores || !Array.isArray(transformedScores)) {
+//         throw new Error('Transformed scores must be a valid array');
+//       }
+      
+//       if (transformedScores.length === 0) {
+//         console.warn('⚠️ No scores to process');
+//         await connection.commit();
+//         return { success: true, message: 'No scores to process' };
+//       }
+      
+//       if (!['team', 'player'].includes(scoreType)) {
+//         throw new Error('Score type must be either "team" or "player"');
+//       }
+      
+//       const [tournamentRows] = await connection.execute(
+//         'SELECT id, version FROM tournaments WHERE id = ? FOR UPDATE',
+//         [tournamentId]
+//       );
+      
+//       if (tournamentRows.length === 0) {
+//         throw new Error(`Tournament not found with ID: ${tournamentId}`);
+//       }
+      
+//       const tournament = tournamentRows[0];
+    
+//       let existingRequests = [];
+      
+//       if (scoreType === 'team') {
+//         const [teamRequests] = await connection.execute(
+//           'SELECT id FROM team_scores WHERE tournament_id = ? AND game_id = ? AND reason LIKE ? LIMIT 1',
+//           [tournamentId, gameId, `%RequestID:${uniqueRequestId}%`]
+//         );
+//         existingRequests = teamRequests;
+//       } else {
+//         const [playerRequests] = await connection.execute(
+//           'SELECT id FROM player_scores WHERE tournament_id = ? AND game_id = ? AND reason LIKE ? LIMIT 1',
+//           [tournamentId, gameId, `%RequestID:${uniqueRequestId}%`]
+//         );
+//         existingRequests = playerRequests;
+//       }
+      
+//       if (existingRequests.length > 0) {
+       
+//         await connection.commit();
+//         return { success: true, message: 'Request already processed' };
+//       }
+      
+
+//       if (scoreType === 'team') {
+//         await this.processTeamScores(connection, tournamentId, gameId, transformedScores, uniqueRequestId);
+//       } else {
+//         await this.processPlayerScores(connection, tournamentId, gameId, transformedScores, uniqueRequestId);
+//       }
+  
+//       if (scoreType === 'team') {
+//         const [verifyResult] = await connection.execute(
+//           'SELECT COUNT(*) as count FROM team_scores WHERE tournament_id = ? AND game_id = ? AND reason LIKE ?',
+//           [tournamentId, gameId, `%RequestID:${uniqueRequestId}%`]
+//         );
+   
+//         if (verifyResult[0].count === 0) {
+//           throw new Error('No team scores were inserted - check processTeamScores method');
+//         }
+//       }
+      
+//       const [updateResult] = await connection.execute(
+//         'UPDATE tournaments SET version = version + 1, updated_at = NOW() WHERE id = ? AND version = ?',
+//         [tournamentId, tournament.version]
+//       );
+      
+//       if (updateResult.affectedRows === 0) {
+//         throw new Error('Tournament was modified by another process. Please retry.');
+//       }
+      
+//       await connection.commit();
+      
+//       if (scoreType === 'team') {
+//         const [finalCheck] = await connection.execute(
+//           'SELECT COUNT(*) as count FROM team_scores WHERE tournament_id = ? AND game_id = ?',
+//           [tournamentId, gameId]
+//         );
+//       }
+      
+//       // Emit event after successful completion
+//       process.nextTick(() => {
+//         io.emit('leaderboardUpdated', { 
+//           gameId, 
+//           tournamentId, 
+//           scoreType,
+//           timestamp: new Date(),
+//           requestId: uniqueRequestId 
+//         });
+//       });
+      
+//       return { success: true, requestId: uniqueRequestId };
+      
+//     } catch (error) {
+//       console.error(`❌ ERROR in attempt ${attempt}:`, error.message);
+//       console.error(`Rolling back transaction...`);
+      
+//       try {
+//         await connection.rollback();
+//       } catch (rollbackError) {
+//         console.error(`❌ Rollback failed:`, rollbackError.message);
+//       }
+      
+//       lastError = error;
+      
+//       if (attempt === maxRetries) {
+//         throw new Error(`Error recording game scores after ${maxRetries} attempts: ${error.message}`);
+//       }
+      
+//       // Exponential backoff with jitter to avoid thundering herd
+//       const delay = 100 * Math.pow(2, attempt - 1) + Math.random() * 100;
+  
+//       await new Promise(resolve => setTimeout(resolve, delay));
+      
+//     } finally {
+//       connection.release();
+//     }
+//   }
+  
+//   throw new Error(`Error recording game scores: ${lastError?.message || 'Unknown error'}`);
+// }
+
 async recordGameScores(tournamentId, gameId, transformedScores, scoreType, io, requestId = null) {
   const uniqueRequestId = requestId || uuidv4();
 
-  
   const maxRetries = 3;
   let lastError;
   
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
-   
-    
-    // FIXED: Changed from this.db.getConnection() to this.getConnection()
     const connection = await this.getConnection();
-
     
     try {
-    
       await connection.beginTransaction();
-      
       
       // Input validation
       if (!transformedScores || !Array.isArray(transformedScores)) {
@@ -112,18 +250,18 @@ async recordGameScores(tournamentId, gameId, transformedScores, scoreType, io, r
       }
       
       if (existingRequests.length > 0) {
-       
         await connection.commit();
         return { success: true, message: 'Request already processed' };
       }
-      
 
+      // Process scores
       if (scoreType === 'team') {
         await this.processTeamScores(connection, tournamentId, gameId, transformedScores, uniqueRequestId);
       } else {
         await this.processPlayerScores(connection, tournamentId, gameId, transformedScores, uniqueRequestId);
       }
   
+      // Verify scores were inserted
       if (scoreType === 'team') {
         const [verifyResult] = await connection.execute(
           'SELECT COUNT(*) as count FROM team_scores WHERE tournament_id = ? AND game_id = ? AND reason LIKE ?',
@@ -135,6 +273,7 @@ async recordGameScores(tournamentId, gameId, transformedScores, scoreType, io, r
         }
       }
       
+      // Update tournament version
       const [updateResult] = await connection.execute(
         'UPDATE tournaments SET version = version + 1, updated_at = NOW() WHERE id = ? AND version = ?',
         [tournamentId, tournament.version]
@@ -144,17 +283,23 @@ async recordGameScores(tournamentId, gameId, transformedScores, scoreType, io, r
         throw new Error('Tournament was modified by another process. Please retry.');
       }
       
+      // Commit the transaction FIRST
       await connection.commit();
+      console.log('✅ Transaction committed successfully');
       
+      // Final verification check (optional, after commit)
       if (scoreType === 'team') {
         const [finalCheck] = await connection.execute(
           'SELECT COUNT(*) as count FROM team_scores WHERE tournament_id = ? AND game_id = ?',
           [tournamentId, gameId]
         );
+        console.log(`📊 Final team scores count: ${finalCheck[0].count}`);
       }
       
-      // Emit event after successful completion
-      process.nextTick(() => {
+      // FIXED: Emit event immediately after successful commit, not in nextTick
+      console.log('🚀 Emitting leaderboardUpdated event...');
+      
+      try {
         io.emit('leaderboardUpdated', { 
           gameId, 
           tournamentId, 
@@ -162,7 +307,11 @@ async recordGameScores(tournamentId, gameId, transformedScores, scoreType, io, r
           timestamp: new Date(),
           requestId: uniqueRequestId 
         });
-      });
+        console.log('✅ Event emitted successfully');
+      } catch (emitError) {
+        console.error('❌ Error emitting WebSocket event:', emitError.message);
+        // Don't throw here - the database operation was successful
+      }
       
       return { success: true, requestId: uniqueRequestId };
       
@@ -182,9 +331,10 @@ async recordGameScores(tournamentId, gameId, transformedScores, scoreType, io, r
         throw new Error(`Error recording game scores after ${maxRetries} attempts: ${error.message}`);
       }
       
-      // Exponential backoff with jitter to avoid thundering herd
+      // Exponential backoff with jitter
       const delay = 100 * Math.pow(2, attempt - 1) + Math.random() * 100;
-  
+      console.log(`⏳ Waiting ${Math.round(delay)}ms before retry...`);
+      
       await new Promise(resolve => setTimeout(resolve, delay));
       
     } finally {

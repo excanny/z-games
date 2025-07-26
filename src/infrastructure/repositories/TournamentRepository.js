@@ -49,131 +49,6 @@ class TournamentRepository {
     return await this.pool.execute(query, params);
   }
 
-// async createTournament(payload) {
-//   let connection;
-  
-//   try {
-//     connection = await this.getConnection();
-//     await connection.beginTransaction();
-    
-//     const { tournament, teams, selectedGames } = payload;
-    
-//     // Generate GUID for tournament
-//     const tournamentId = this.generateGUID();
-    
-//     // First, deactivate all existing tournaments
-//     const deactivateQuery = `
-//       UPDATE tournaments 
-//       SET status = 'inactive' 
-//       WHERE status = 'active'
-//     `;
-//     await connection.execute(deactivateQuery);
-    
-//     // Create tournament with explicit GUID
-//     const tournamentQuery = `
-//       INSERT INTO tournaments (
-//         id,
-//         name, 
-//         description, 
-//         status
-//       ) VALUES (?, ?, ?, ?);
-//     `;
-    
-//     await connection.execute(tournamentQuery, [
-//       tournamentId,
-//       tournament.name,
-//       tournament.description,
-//       'active'
-//     ]);
-    
- 
-
-//     // Save selected games to tournament_selected_games
-// if (selectedGames && selectedGames.length > 0) {
-//   for (const gameId of selectedGames) { // Changed from 'game' to 'gameId'
-//     const selectedGameId = this.generateGUID();
-    
-//     const selectedGameQuery = `
-//       INSERT INTO tournament_selected_games (
-//         id,
-//         game_id,
-//         tournament_id
-//       ) VALUES (?, ?, ?)
-//     `;
-    
-//     await connection.execute(selectedGameQuery, [
-//       selectedGameId,
-//       gameId,    
-//       tournamentId
-//     ]);
-//   }
-// }
-    
-//     // Create teams and players
-//     for (const team of teams) {
-//       // Generate GUID for team
-//       const teamId = this.generateGUID();
-      
-//       // Create team with explicit GUID
-//       const teamQuery = `
-//         INSERT INTO teams (id, name, tournament_id)
-//         VALUES (?, ?, ?)
-//       `;
-      
-//       await connection.execute(teamQuery, [
-//         teamId,
-//         team.name,
-//         tournamentId
-//       ]);
-      
-//       // Create players for this team
-//       for (const player of team.players) {
-//         // Get animal ID by name/emoji
-//         const animalName = this.mapEmojiToAnimalName(player.avatar || player.animalAvatar);
-//         const [animalRows] = await connection.execute(
-//           'SELECT id FROM animals WHERE name = ?',
-//           [animalName]
-//         );
-        
-//         if (animalRows.length === 0) {
-//           throw new Error(`Animal not found for: ${animalName}. Available animals: Lion, Tiger, Eagle, Cat, Shark, Dog, Whale, Horse, Bison, Moose, Goose, Turtle, Beaver, Bear, Frog, Rabbit, Wolf, Human, Monkey, Chameleon`);
-//         }
-        
-//         const animalId = animalRows[0].id;
-        
-//         // Create player
-//         const playerQuery = `
-//           INSERT INTO players (name, animal_id, team_id, tournament_id)
-//           VALUES (?, ?, ?, ?)
-//         `;
-        
-//         await connection.execute(playerQuery, [
-//           player.name,
-//           animalId,
-//           teamId, // Now using the generated GUID
-//           tournamentId,
-//         ]);
-//       }
-//     }
-    
-//     await connection.commit();
-    
-//     // Return created tournament with details
-//     const createdTournament = await this.findById(tournamentId);
-//     return createdTournament;
-    
-//   } catch (error) {
-//     if (connection) {
-//       await connection.rollback();
-//     }
-//     throw new Error(`Error creating tournament: ${error.message}`);
-//   } finally {
-//     if (connection) {
-//       connection.release();
-//     }
-//   }
-// }
-
 async createTournament(payload) {
   let connection;
   
@@ -362,11 +237,12 @@ async createTournament(payload) {
 
       // Create new team
       const teamQuery = `
-        INSERT INTO teams (name, tournament_id, created_at, updated_at)
-        VALUES (?, ?, NOW(), NOW())
+        INSERT INTO teams (id, name, tournament_id)
+        VALUES (?, ?, ?)
       `;
       
       await connection.execute(teamQuery, [
+        uuidv4(), // Generate a new UUID for the team
         teamName,
         tournamentId
       ]);
@@ -638,6 +514,7 @@ async findAll(options = {}) {
   }
 }
 
+
 async findById(tournamentId) {
   let connection;
   
@@ -657,6 +534,15 @@ async findById(tournamentId) {
     
     const tournament = tournamentRows[0];
     
+    // DEBUG: First, let's check how many teams exist for this tournament
+    const [allTeamsRows] = await connection.execute(`
+      SELECT id, name, tournament_id
+      FROM teams 
+      WHERE tournament_id = ?
+      ORDER BY name
+    `, [tournamentId]);
+    
+
     // Get selected games from tournament_selected_games table
     const [selectedGamesRows] = await connection.execute(`
       SELECT tsg.id, tsg.game_id, g.name as game_name, g.description as game_description
@@ -676,15 +562,11 @@ async findById(tournamentId) {
         ts.id as score_id,
         ts.score_change,
         ts.reason,
-        COALESCE(SUM(ts.score_change), 0) as game_total_score,
-        COALESCE(SUM(CASE WHEN ts.score_change > 0 THEN ts.score_change ELSE 0 END), 0) as game_positive_score,
-        COALESCE(SUM(CASE WHEN ts.score_change < 0 THEN ts.score_change ELSE 0 END), 0) as game_deductions,
-        COUNT(ts.id) as score_entries_count
+        ts.created_at as score_date
       FROM teams t
       LEFT JOIN team_scores ts ON t.id = ts.team_id
       LEFT JOIN games g ON ts.game_id = g.id
       WHERE t.tournament_id = ?
-      GROUP BY t.id, t.name, g.id, g.name, ts.id, ts.score_change, ts.reason, ts.created_at
       ORDER BY t.name, g.name, ts.created_at DESC
     `, [tournamentId]);
 
@@ -702,22 +584,18 @@ async findById(tournamentId) {
         ps.id as score_id,
         ps.score_change,
         ps.reason,
-        ps.created_at as score_date,
-        COALESCE(SUM(ps.score_change), 0) as game_total_score,
-        COALESCE(SUM(CASE WHEN ps.score_change > 0 THEN ps.score_change ELSE 0 END), 0) as game_positive_score,
-        COALESCE(SUM(CASE WHEN ps.score_change < 0 THEN ps.score_change ELSE 0 END), 0) as game_deductions,
-        COUNT(ps.id) as score_entries_count
+        ps.created_at as score_date
       FROM teams t
       JOIN players p ON t.id = p.team_id
       LEFT JOIN animals a ON p.animal_id = a.id
       LEFT JOIN player_scores ps ON p.id = ps.player_id
       LEFT JOIN games g ON ps.game_id = g.id
       WHERE t.tournament_id = ?
-      GROUP BY t.id, t.name, p.id, p.name, a.id, a.name, g.id, g.name, ps.id, ps.score_change, ps.reason, ps.created_at
       ORDER BY t.name, p.name, g.name, ps.created_at DESC
     `, [tournamentId]);
 
-    // Get aggregated team scores by game (without individual score entries)
+
+    // Get aggregated team scores by game (modified to include teams without scores)
     const [teamGameAggregatesRows] = await connection.execute(`
       SELECT 
         t.id as team_id,
@@ -735,11 +613,11 @@ async findById(tournamentId) {
       LEFT JOIN games g ON ts.game_id = g.id
       WHERE t.tournament_id = ?
       GROUP BY t.id, t.name, g.id, g.name
-      HAVING COUNT(ts.id) > 0
       ORDER BY t.name, g.name
     `, [tournamentId]);
+    
 
-    // Get aggregated player scores by game
+    // Get aggregated player scores by game (modified to include players without scores)
     const [playerGameAggregatesRows] = await connection.execute(`
       SELECT 
         t.id as team_id,
@@ -763,7 +641,6 @@ async findById(tournamentId) {
       LEFT JOIN games g ON ps.game_id = g.id
       WHERE t.tournament_id = ?
       GROUP BY t.id, t.name, p.id, p.name, a.id, a.name, g.id, g.name
-      HAVING COUNT(ps.id) > 0
       ORDER BY t.name, p.name, g.name
     `, [tournamentId]);
 
@@ -771,6 +648,20 @@ async findById(tournamentId) {
     const teamsMap = new Map();
     const gamesByIdMap = new Map();
     
+    // Initialize ALL teams first (this was missing in original code)
+    allTeamsRows.forEach(team => {
+      teamsMap.set(team.id, {
+        id: team.id,
+        name: team.name,
+        gameScores: new Map(),
+        players: new Map(),
+        totalScore: 0,
+        totalPositiveScore: 0,
+        totalDeductions: 0
+      });
+    });
+    
+
     // Initialize games map
     selectedGamesRows.forEach(game => {
       gamesByIdMap.set(game.game_id, {
@@ -780,9 +671,10 @@ async findById(tournamentId) {
       });
     });
 
-    // Process team game aggregates
+    // Process team game aggregates (modified to handle teams without scores)
     teamGameAggregatesRows.forEach(row => {
       if (!teamsMap.has(row.team_id)) {
+       
         teamsMap.set(row.team_id, {
           id: row.team_id,
           name: row.team_name,
@@ -795,21 +687,25 @@ async findById(tournamentId) {
       }
       
       const team = teamsMap.get(row.team_id);
-      team.gameScores.set(row.game_id, {
-        gameId: row.game_id,
-        gameName: row.game_name,
-        totalScore: Number(row.total_score),
-        positiveScore: Number(row.positive_score),
-        deductions: Math.abs(Number(row.deductions)),
-        totalEntries: row.total_entries,
-        firstScoreDate: row.first_score_date,
-        lastScoreDate: row.last_score_date,
-        scoreEntries: []
-      });
       
-      team.totalScore += Number(row.total_score);
-      team.totalPositiveScore += Number(row.positive_score);
-      team.totalDeductions += Math.abs(Number(row.deductions));
+      // Only add game scores if there's actually a game (not null from LEFT JOIN)
+      if (row.game_id) {
+        team.gameScores.set(row.game_id, {
+          gameId: row.game_id,
+          gameName: row.game_name,
+          totalScore: Number(row.total_score),
+          positiveScore: Number(row.positive_score),
+          deductions: Math.abs(Number(row.deductions)),
+          totalEntries: row.total_entries,
+          firstScoreDate: row.first_score_date,
+          lastScoreDate: row.last_score_date,
+          scoreEntries: []
+        });
+        
+        team.totalScore += Number(row.total_score);
+        team.totalPositiveScore += Number(row.positive_score);
+        team.totalDeductions += Math.abs(Number(row.deductions));
+      }
     });
 
     // Add detailed team score entries
@@ -827,9 +723,10 @@ async findById(tournamentId) {
       }
     });
 
-    // Process player game aggregates
+    // Process player game aggregates (modified to handle players without scores)
     playerGameAggregatesRows.forEach(row => {
       if (!teamsMap.has(row.team_id)) {
+       
         teamsMap.set(row.team_id, {
           id: row.team_id,
           name: row.team_name,
@@ -859,21 +756,25 @@ async findById(tournamentId) {
       }
       
       const player = team.players.get(row.player_id);
-      player.gameScores.set(row.game_id, {
-        gameId: row.game_id,
-        gameName: row.game_name,
-        totalScore: Number(row.total_score),
-        positiveScore: Number(row.positive_score),
-        deductions: Math.abs(Number(row.deductions)),
-        totalEntries: row.total_entries,
-        firstScoreDate: row.first_score_date,
-        lastScoreDate: row.last_score_date,
-        scoreEntries: []
-      });
       
-      player.totalScore += Number(row.total_score);
-      player.totalPositiveScore += Number(row.positive_score);
-      player.totalDeductions += Math.abs(Number(row.deductions));
+      // Only add game scores if there's actually a game (not null from LEFT JOIN)
+      if (row.game_id) {
+        player.gameScores.set(row.game_id, {
+          gameId: row.game_id,
+          gameName: row.game_name,
+          totalScore: Number(row.total_score),
+          positiveScore: Number(row.positive_score),
+          deductions: Math.abs(Number(row.deductions)),
+          totalEntries: row.total_entries,
+          firstScoreDate: row.first_score_date,
+          lastScoreDate: row.last_score_date,
+          scoreEntries: []
+        });
+        
+        player.totalScore += Number(row.total_score);
+        player.totalPositiveScore += Number(row.positive_score);
+        player.totalDeductions += Math.abs(Number(row.deductions));
+      }
     });
 
     // Add detailed player score entries
@@ -1045,6 +946,7 @@ async findById(tournamentId) {
     };
     
   } catch (error) {
+    console.error('DEBUG: Error in findById:', error);
     throw new Error(`Error finding tournament: ${error.message}`);
   } finally {
     if (connection) {
@@ -1213,13 +1115,15 @@ async findById(tournamentId) {
         throw new Error(`Animal not found for: ${animalName}`);
       }
 
+      const playerId = uuidv4();
       // Create new player
       const playerQuery = `
-        INSERT INTO players (name, animal_id, team_id, tournament_id, created_at, updated_at)
-        VALUES (?, ?, ?, ?, NOW(), NOW())
+        INSERT INTO players (id, name, animal_id, team_id, tournament_id)
+        VALUES (?, ?, ?, ?, ?)
       `;
       
       await connection.execute(playerQuery, [
+        playerId,
         playerData.name,
         animalRows[0].id,
         teamId,
@@ -1319,7 +1223,54 @@ async findById(tournamentId) {
     }
   }
 
-  async removeTeamFromTournament(tournamentId, teamId) {
+  // async removeTeamFromTournament(tournamentId, teamId) {
+  //   const connection = await this.getConnection();
+    
+  //   try {
+  //     await connection.beginTransaction();
+
+  //     // Check if tournament allows removing teams
+  //     const [tournamentRows] = await connection.execute(
+  //       'SELECT status FROM tournaments WHERE id = ?',
+  //       [tournamentId]
+  //     );
+      
+  //     if (tournamentRows.length === 0) {
+  //       throw new Error('Tournament not found');
+  //     }
+
+  //     if (tournamentRows[0].status === 'completed') {
+  //       throw new Error('Cannot remove teams from a completed tournament');
+  //     }
+
+  //     // Verify team belongs to tournament
+  //     const [teamRows] = await connection.execute(
+  //       'SELECT id FROM teams WHERE id = ? AND tournament_id = ?',
+  //       [teamId, tournamentId]
+  //     );
+      
+  //     if (teamRows.length === 0) {
+  //       throw new Error('Team not found or does not belong to this tournament');
+  //     }
+
+  //     // Delete players first (foreign key constraint)
+  //     await connection.execute('DELETE FROM players WHERE team_id = ?', [teamId]);
+      
+  //     // Delete team
+  //     await connection.execute('DELETE FROM teams WHERE id = ?', [teamId]);
+
+  //     await connection.commit();
+  //     return await this.findById(tournamentId);
+      
+  //   } catch (error) {
+  //     await connection.rollback();
+  //     throw new Error(`Error removing team from tournament: ${error.message}`);
+  //   } finally {
+  //     connection.release();
+  //   }
+  // }
+
+async removeTeamFromTournament(tournamentId, teamId) {
     const connection = await this.getConnection();
     
     try {
@@ -1337,6 +1288,18 @@ async findById(tournamentId) {
 
       if (tournamentRows[0].status === 'completed') {
         throw new Error('Cannot remove teams from a completed tournament');
+      }
+
+      // Count total teams in tournament
+      const [teamCountRows] = await connection.execute(
+        'SELECT COUNT(*) as team_count FROM teams WHERE tournament_id = ?',
+        [tournamentId]
+      );
+      
+      const totalTeams = teamCountRows[0].team_count;
+      
+      if (totalTeams < 3) {
+        throw new Error('Cannot remove team: tournament must have at least 2 teams');
       }
 
       // Verify team belongs to tournament

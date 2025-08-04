@@ -72,20 +72,9 @@ async getGameById(req, res) {
       });
     }
 
-    // Filter applicable superpowers to only include available animals
-    const availableAnimals = await this.animalRepository.getAvailableAnimals();
-    const availableAnimalNames = new Set(availableAnimals.map(animal => animal.name));
-
-    const gameWithAvailableSuperpowers = {
-      ...game.toObject(),
-      applicableSuperpowers: game.applicableSuperpowers.filter(superpower =>
-        availableAnimalNames.has(superpower.animal)
-      )
-    };
-
     res.status(200).json({
       success: true,
-      data: gameWithAvailableSuperpowers
+      data: game
     });
   } catch (error) {
     res.status(500).json({
